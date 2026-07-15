@@ -24,4 +24,4 @@ behaviors:
     keep_checkpoints: 5
     max_steps: 5000000
     time_horizon: 1000
-    summary_freq: 20000
+    summary_freq: 10

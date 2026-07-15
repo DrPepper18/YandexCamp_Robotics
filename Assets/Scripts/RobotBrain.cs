@@ -295,7 +295,7 @@ public class RobotBrain : Agent
             servoAngle = Mathf.Clamp(
                 servoAngle + actCameraCmd * servoSpeed * Time.fixedDeltaTime,
                 -servoMaxAngle, servoMaxAngle);
-            cameraServo.localRotation = Quaternion.Euler(0f, servoAngle, 0f);
+            cameraServo.localRotation = Quaternion.Euler(0f, 0f, servoAngle);
         }
 
         if (gripper != null)
@@ -342,7 +342,13 @@ public class RobotBrain : Agent
             if (sensors.LeftIR == 1 || sensors.RightIR == 1) AddReward(-wallProximityPenalty);
         }
 
-        if (hasBall) { AddReward(successReward); EndEpisode(); return; }
+        if (hasBall)
+        {
+            AddReward(successReward);
+            Academy.Instance.StatsRecorder.Add("Custom/BallPickups", 1f, StatAggregationMethod.Sum);
+            EndEpisode();
+            return;
+        }
 
         Vector3 pos = transform.position;
         if (pos.x < arenaMin.x || pos.x > arenaMax.x ||
@@ -352,6 +358,12 @@ public class RobotBrain : Agent
             AddReward(outOfBoundsPenalty);
             EndEpisode();
         }
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (collision.gameObject.CompareTag("Wall"))
+            Academy.Instance.StatsRecorder.Add("Custom/WallBounces", 1f, StatAggregationMethod.Sum);
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
@@ -368,8 +380,8 @@ public class RobotBrain : Agent
         continuous[2] = camCmd;
 
         int grip = 0;
-        if (Input.GetKeyDown(KeyCode.Space))     grip = 1;
-        if (Input.GetKeyDown(KeyCode.LeftShift)) grip = 2;
+        if (Input.GetKey(KeyCode.Space))          grip = 1;
+        else if (Input.GetKey(KeyCode.LeftShift)) grip = 2;
         discrete[0] = grip;
     }
 
