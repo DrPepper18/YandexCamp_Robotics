@@ -45,7 +45,6 @@ public class RobotBrain : Agent
     [SerializeField] private float centeringBonusScale    = 0.01f;
     [SerializeField] private float wallProximityPenalty   = 0.02f;
     [SerializeField] private float successReward          = 5.0f;
-    [SerializeField] private float outOfBoundsPenalty     = -2.0f;
     [SerializeField] private float wallCriticalUsThreshold = 0.15f;
     [SerializeField] private float closeApproachDistance   = 0.3f;
     [SerializeField] private float approachDecayRate       = 8f;
@@ -391,15 +390,6 @@ public class RobotBrain : Agent
             Academy.Instance.StatsRecorder.Add("Custom/BallPickups", 1f, StatAggregationMethod.Sum);
             EndEpisode();
             return;
-        }
-
-        Vector3 pos = transform.position;
-        if (pos.x < arenaMin.x || pos.x > arenaMax.x ||
-            pos.y < arenaMin.y || pos.y > arenaMax.y ||
-            pos.z < arenaMin.z || pos.z > arenaMax.z)
-        {
-            AddReward(outOfBoundsPenalty);
-            EndEpisode();
         }
     }
 
