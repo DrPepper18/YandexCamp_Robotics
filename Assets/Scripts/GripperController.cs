@@ -114,10 +114,12 @@ public class GripperController : MonoBehaviour
             heldCol.enabled = false;
         }
 
-        // Крепим к точке
-        ball.transform.SetParent(holdPoint, worldPositionStays: false);
-        ball.transform.localPosition = Vector3.zero;
-        ball.transform.localRotation = Quaternion.identity;
+        // Крепим к точке. worldPositionStays: true сохраняет мировой масштаб мяча,
+        // иначе он унаследует масштаб родителя (и раздуется/сожмётся).
+        ball.transform.SetParent(holdPoint, worldPositionStays: true);
+        // Затем принудительно телепортируем мяч в позицию HoldPoint, сохраняя размер.
+        ball.transform.position = holdPoint.position;
+        ball.transform.rotation = holdPoint.rotation;
     }
 
     private void Release()
