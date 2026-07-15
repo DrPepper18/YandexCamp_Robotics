@@ -47,6 +47,13 @@ public class RobotBrain : Agent
     [SerializeField] private float successReward          = 5.0f;
     [SerializeField] private float outOfBoundsPenalty     = -2.0f;
     [SerializeField] private float wallCriticalUsThreshold = 0.15f;
+    [SerializeField] private float closeApproachDistance   = 0.3f;
+    [SerializeField] private float approachDecayRate       = 8f;
+    [SerializeField] private float idleSpeedThreshold      = 0.05f;
+    [SerializeField] private float idlePenalty             = 0.001f;
+    [SerializeField] private float reversePenalty          = 0.001f;
+    [SerializeField] private float frontWallThreshold      = 0.3f;
+    [SerializeField] private float frontWallPenalty        = 0.01f;
 
     // ---------- Наблюдения (Debug — видны в Inspector, доступны через свойства) ----------
     [Header("OBSERVATIONS (read-only, для отладки)")]
@@ -110,6 +117,7 @@ public class RobotBrain : Agent
     private float prevDistanceToBall;
     private float prevGas, prevSteer;
     private bool  hasBall;
+    private bool  everSeenBall;
     private float arenaSize;
 
     private bool initialized;
@@ -144,8 +152,9 @@ public class RobotBrain : Agent
         {
             lastKnownBallAngle = yoloCamera.RelativeAngle;
             timeSinceLastBallSeen = 0f;
+            everSeenBall = true;
         }
-        else
+        else if (everSeenBall)
         {
             timeSinceLastBallSeen += Time.fixedDeltaTime;
         }
@@ -200,14 +209,16 @@ public class RobotBrain : Agent
 
         lastKnownBallAngle = 0f;
         timeSinceLastBallSeen = 0f;
+        everSeenBall = false;
         prevGas = 0f;
         prevSteer = 0f;
         hasBall = false;
         rewardStep = 0f;
         rewardCumulative = 0f;
 
+        Vector3 startRefPos = (gripper != null && gripper.holdPoint != null) ? gripper.holdPoint.position : transform.position;
         prevDistanceToBall = ballTransform != null
-            ? Vector3.Distance(transform.position, ballTransform.position)
+            ? Vector3.Distance(startRefPos, ballTransform.position)
             : 0f;
     }
 
@@ -300,8 +311,8 @@ public class RobotBrain : Agent
 
         if (gripper != null)
         {
-            if (actGripCmd == 1 && !gripper.IsHolding) gripper.GripCommand();
-            else if (actGripCmd == 2 && gripper.IsHolding) gripper.ReleaseCommand();
+            if (actGripCmd == 1) gripper.GripCommand();
+            else                 gripper.ReleaseCommand();
         }
 
         // Состояние (lastKnownBallAngle, timeSinceLastBallSeen, hasBall) и
@@ -322,18 +333,38 @@ public class RobotBrain : Agent
     {
         if (ballTransform == null) return;
 
-        float currentDistance = Vector3.Distance(transform.position, ballTransform.position);
+        // Меряем от точки захвата (HoldPoint), а не от корня шасси — иначе дистанция
+        // никогда не приближается к нулю даже в момент реального захвата мяча.
+        Vector3 refPos = (gripper != null && gripper.holdPoint != null) ? gripper.holdPoint.position : transform.position;
+        float currentDistance = Vector3.Distance(refPos, ballTransform.position);
 
         float delta = prevDistanceToBall - currentDistance;
         float proximityFactor = Mathf.Clamp01(1f - currentDistance / 2f);
-        AddReward(delta * approachRewardScale * (1f + proximityFactor));
+        float approachReward = delta * approachRewardScale * (1f + proximityFactor);
+        if (currentDistance < closeApproachDistance)
+        {
+            // Экспоненциальное затухание вблизи мяча — учим подъезжать аккуратно, а не влетать.
+            // t=1 на границе (approachDecayRate) -> без изменений, t=0 у самого мяча -> множитель ~ e^-approachDecayRate.
+            float t = Mathf.Clamp01(currentDistance / closeApproachDistance);
+            approachReward *= Mathf.Exp(-approachDecayRate * (1f - t));
+        }
+        AddReward(approachReward);
         prevDistanceToBall = currentDistance;
 
         float actionDiff = Mathf.Abs(gas - prevGas) + Mathf.Abs(steer - prevSteer);
         AddReward(-actionDiff * actionRatePenaltyScale);
 
+        if (rb != null && rb.linearVelocity.magnitude < idleSpeedThreshold)
+            AddReward(-idlePenalty);
+
+        if (gas < 0f)
+            AddReward(-reversePenalty);
+
         if (yoloCamera != null && yoloCamera.IsVisible)
             AddReward((1f - Mathf.Abs(yoloCamera.RelativeAngle)) * centeringBonusScale);
+
+        if (o01_ultrasonic < frontWallThreshold)
+            AddReward(-frontWallPenalty);
 
         if (sensors != null)
         {

@@ -699,6 +699,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 3216211454230427293, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 2.757
+      objectReference: {fileID: 0}
+    - target: {fileID: 3216211454230427293, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.505
+      objectReference: {fileID: 0}
     - target: {fileID: 3720893540279981232, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: irObstacleDistance
       value: 0.25
@@ -706,6 +714,22 @@ PrefabInstance:
     - target: {fileID: 4418269606206536186, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_Constraints
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4598067523681118530, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 3.4
+      objectReference: {fileID: 0}
+    - target: {fileID: 4598067523681118530, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.572
+      objectReference: {fileID: 0}
+    - target: {fileID: 4763904386349866122, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1.94
+      objectReference: {fileID: 0}
+    - target: {fileID: 5343679883668041272, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_Name
+      value: Bamper
       objectReference: {fileID: 0}
     - target: {fileID: 5960658253694460914, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: targetBall
@@ -768,9 +792,37 @@ PrefabInstance:
       value: robot
       objectReference: {fileID: 0}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: idlePenalty
+      value: 0.0001
+      objectReference: {fileID: 0}
+    - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: ballTransform
       value: 
       objectReference: {fileID: 826170664}
+    - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: reversePenalty
+      value: 0.0005
+      objectReference: {fileID: 0}
+    - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: frontWallPenalty
+      value: 0.001
+      objectReference: {fileID: 0}
+    - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: approachRewardScale
+      value: 0.07
+      objectReference: {fileID: 0}
+    - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: centeringBonusScale
+      value: 0.03
+      objectReference: {fileID: 0}
+    - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: wallProximityPenalty
+      value: 0.001
+      objectReference: {fileID: 0}
+    - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: actionRatePenaltyScale
+      value: 0.01
+      objectReference: {fileID: 0}
     - target: {fileID: 8905910208110426861, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_LocalPosition.x
       value: -0.0024099725
@@ -810,6 +862,14 @@ PrefabInstance:
     - target: {fileID: 8905910208110426861, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: -2.118
+      objectReference: {fileID: 0}
+    - target: {fileID: 9182157635149201131, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1.836
+      objectReference: {fileID: 0}
+    - target: {fileID: 9182157635149201131, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.474
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
