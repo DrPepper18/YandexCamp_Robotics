@@ -735,6 +735,14 @@ PrefabInstance:
       propertyPath: targetBall
       value: 
       objectReference: {fileID: 826170664}
+    - target: {fileID: 6996107869482682956, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_Model
+      value: 
+      objectReference: {fileID: 5022602860645237092, guid: f3e6eb012ed85914d8fb13ae4c9b84be, type: 3}
+    - target: {fileID: 6996107869482682956, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_BehaviorType
+      value: 2
+      objectReference: {fileID: 0}
     - target: {fileID: 7093799689733554274, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_LocalScale.x
       value: 0.075
@@ -790,6 +798,10 @@ PrefabInstance:
     - target: {fileID: 7884903447691770912, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_Name
       value: robot
+      objectReference: {fileID: 0}
+    - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: MaxStep
+      value: 10000
       objectReference: {fileID: 0}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: idlePenalty

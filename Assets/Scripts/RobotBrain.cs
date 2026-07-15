@@ -55,6 +55,9 @@ public class RobotBrain : Agent
     [SerializeField] private float frontWallThreshold      = 0.3f;
     [SerializeField] private float frontWallPenalty        = 0.01f;
 
+    [Tooltip("Собственный лимит шагов эпизода (не зависит от Agent.MaxStep). 0 = без лимита.")]
+    [SerializeField] private int customMaxSteps = 3000;
+
     // ---------- Наблюдения (Debug — видны в Inspector, доступны через свойства) ----------
     [Header("OBSERVATIONS (read-only, для отладки)")]
     [SerializeField] private float o01_ultrasonic;
@@ -119,6 +122,7 @@ public class RobotBrain : Agent
     private bool  hasBall;
     private bool  everSeenBall;
     private float arenaSize;
+    private int   episodeStepCount;
 
     private bool initialized;
 
@@ -210,6 +214,7 @@ public class RobotBrain : Agent
         lastKnownBallAngle = 0f;
         timeSinceLastBallSeen = 0f;
         everSeenBall = false;
+        episodeStepCount = 0;
         prevGas = 0f;
         prevSteer = 0f;
         hasBall = false;
@@ -327,6 +332,13 @@ public class RobotBrain : Agent
 
         prevGas = actGas;
         prevSteer = actSteer;
+
+        if (customMaxSteps > 0)
+        {
+            episodeStepCount++;
+            if (episodeStepCount >= customMaxSteps)
+                EpisodeInterrupted();
+        }
     }
 
     private void ApplyRewards(float gas, float steer)
