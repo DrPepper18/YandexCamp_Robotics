@@ -1,128 +1,139 @@
-using UnityEngine;
-
 /// <summary>
-/// Simulates a YOLO-based ball detector without actually rendering a camera image.
-/// Instead, it projects the target ball's 3D world position into the camera's
-/// viewport and derives the same kind of output a real YOLO bounding-box
-/// detector would give: a horizontal angle offset and a normalized distance,
-/// plus a visibility flag.
-///
-/// Attach this to the robot's camera GameObject (needs a Camera component).
+/// Симуляция бортовой YOLO-камеры без реального рендеринга.
+/// Проецирует 3D-позицию мяча в 2D viewport, проверяет FOV и линию видимости
+/// (пропускает собственные коллайдеры робота).
 /// </summary>
-[RequireComponent(typeof(Camera))]
+/// 
+/// 
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
 public class SimulatedYoloCamera : MonoBehaviour
 {
-    [Header("Target")]
-    [Tooltip("The ball to detect. Can be left empty and set at runtime.")]
-    public Transform targetBall;
+    [Header("Ссылки")]
+    [Tooltip("Камера робота. Если пусто — ищется в этом объекте или его детях")]
+    [SerializeField] private Camera cam;
 
-    [Header("Field of view / range")]
-    [Tooltip("Horizontal field of view of the simulated camera, degrees")]
-    public float hFov = 40f;
+    [Tooltip("Целевой мяч. Если пусто — ищется по тегу")]
+    [SerializeField] private Transform targetBall;
 
-    [Tooltip("Maximum distance at which the ball can be seen, meters")]
-    public float maxViewDistance = 2f;
+    [Tooltip("Корневой объект робота, чьи коллайдеры игнорировать. Если пусто — берётся transform.root")]
+    [SerializeField] private Transform robotRoot;
 
-    [Header("Line of sight")]
-    [Tooltip("Layers considered as walls/obstacles that block the camera's view")]
-    public LayerMask obstacleMask = ~0;
+    [SerializeField] private string ballTag = "TargetBall";
 
-    private Camera cam;
+    [Header("Параметры камеры")]
+    [Tooltip("Горизонтальный FOV в градусах")]
+    [SerializeField] private float hFOV = 40f;
 
-    // --- Public read-only detection results, updated each frame ---
+    [Tooltip("Максимальная дальность видимости, м")]
+    [SerializeField] private float maxDistance = 2.0f;
 
-    /// <summary>True if the ball is currently visible to the camera.</summary>
-    public bool IsBallVisible { get; private set; }
+    [Header("Отладка")]
+    [SerializeField] private bool drawGizmos = true;
+    [Tooltip("Печатать в Console причину, почему мяч НЕ виден (каждые ~2 сек)")]
+    [SerializeField] private bool verboseLogging = false;
 
-    /// <summary>
-    /// Horizontal offset from the center of the frame, roughly in the
-    /// range -1 (left edge) .. 0 (center) .. +1 (right edge).
-    /// Only meaningful when IsBallVisible is true.
-    /// </summary>
-    public float HorizontalOffset { get; private set; }
+    // ---- Debug view (только для чтения в Inspector) ----
+    [Header("Debug (read-only)")]
+    [SerializeField] private float dbg_distanceToBall;
+    [SerializeField] private float dbg_angleToBall;
+    [SerializeField] private string dbg_lastReason = "-";
 
-    /// <summary>
-    /// Normalized distance to the ball: 0 = right next to the camera,
-    /// 1 = at or beyond maxViewDistance. Only meaningful when IsBallVisible is true.
-    /// </summary>
-    public float NormalizedDistance { get; private set; }
+    // ---- Публичные показания ----
+    public bool  IsVisible          { get; private set; }
+    public float RelativeAngle      { get; private set; }
+    public float NormalizedDistance { get; private set; } = 1f;
+
+    private float lastLogTime;
 
     private void Awake()
     {
-        cam = GetComponent<Camera>();
+        if (cam == null) cam = GetComponent<Camera>();
+        if (cam == null) cam = GetComponentInChildren<Camera>();
+        if (robotRoot == null) robotRoot = transform.root;
     }
 
-    private void Update()
+    private void FixedUpdate()
     {
-        UpdateDetection();
-    }
-
-    private void UpdateDetection()
-    {
-        if (targetBall == null || cam == null)
-        {
-            IsBallVisible = false;
-            HorizontalOffset = 0f;
-            NormalizedDistance = 1f;
-            return;
-        }
-
-        Vector3 toBall = targetBall.position - cam.transform.position;
-        float distance = toBall.magnitude;
-
-        // 1) Range check.
-        if (distance > maxViewDistance)
-        {
-            SetNotVisible();
-            return;
-        }
-
-        // 2) Horizontal FOV check (angle between camera forward and direction to ball,
-        //    measured only on the horizontal plane so vertical offset doesn't matter).
-        Vector3 flatForward = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up);
-        Vector3 flatToBall = Vector3.ProjectOnPlane(toBall, Vector3.up);
-        float horizontalAngle = Vector3.SignedAngle(flatForward, flatToBall, Vector3.up);
-
-        if (Mathf.Abs(horizontalAngle) > hFov * 0.5f)
-        {
-            SetNotVisible();
-            return;
-        }
-
-        // 3) Line-of-sight check: nothing solid between camera and ball.
-        if (Physics.Raycast(cam.transform.position, toBall.normalized, out RaycastHit hit, distance, obstacleMask))
-        {
-            if (hit.transform != targetBall)
-            {
-                // Something else (a wall) is blocking the view.
-                SetNotVisible();
-                return;
-            }
-        }
-
-        // 4) Ball is visible - compute YOLO-like output via viewport projection.
-        Vector3 viewportPoint = cam.WorldToViewportPoint(targetBall.position);
-
-        // viewportPoint.x is 0..1 across the frame; remap to -1..+1 (left..right).
-        float horizontalOffset = (viewportPoint.x - 0.5f) * 2f;
-
-        // Normalized distance: 0 = close, 1 = at max range.
-        float normalizedDistance = Mathf.Clamp01(distance / maxViewDistance);
-
-        IsBallVisible = true;
-        HorizontalOffset = Mathf.Clamp(horizontalOffset, -1f, 1f);
-        NormalizedDistance = normalizedDistance;
-    }
-
-    private void SetNotVisible()
-    {
-        IsBallVisible = false;
-        HorizontalOffset = 0f;
+        IsVisible = false;
+        RelativeAngle = 0f;
         NormalizedDistance = 1f;
+
+        // --- Ищем камеру, если не назначена ---
+        if (cam == null)
+        {
+            cam = GetComponent<Camera>();
+            if (cam == null) cam = GetComponentInChildren<Camera>();
+            if (cam == null) { SetReason("no camera"); return; }
+        }
+
+        // --- Ищем мяч по тегу ---
+        if (targetBall == null && !string.IsNullOrEmpty(ballTag))
+        {
+            var go = GameObject.FindWithTag(ballTag);
+            if (go != null) targetBall = go.transform;
+        }
+        if (targetBall == null) { SetReason("no target ball"); return; }
+
+        // --- Расчёт расстояния и угла ---
+        Vector3 fromCam = targetBall.position - cam.transform.position;
+        float dist = fromCam.magnitude;
+        dbg_distanceToBall = dist;
+
+        if (dist > maxDistance) { SetReason($"too far ({dist:F2} > {maxDistance})"); return; }
+
+        Vector3 flatDir = new Vector3(fromCam.x, 0f, fromCam.z);
+        Vector3 flatFwd = new Vector3(cam.transform.forward.x, 0f, cam.transform.forward.z);
+        if (flatDir.sqrMagnitude < 0.0001f || flatFwd.sqrMagnitude < 0.0001f)
+        { SetReason("degenerate direction"); return; }
+
+        float angle = Vector3.Angle(flatFwd, flatDir);
+        dbg_angleToBall = angle;
+
+        if (angle > hFOV * 0.5f)
+        { SetReason($"out of FOV ({angle:F1}° > {hFOV * 0.5f:F1}°)"); return; }
+
+        // --- Линия видимости: RaycastAll, пропускаем свои коллайдеры ---
+        RaycastHit[] hits = Physics.RaycastAll(cam.transform.position, fromCam.normalized, dist + 0.05f);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        foreach (var hit in hits)
+        {
+            // Свои коллайдеры игнорируем
+            if (robotRoot != null && hit.collider.transform.IsChildOf(robotRoot)) continue;
+
+            // Если первое чужое попадание — сам мяч, всё ок
+            if (hit.collider.CompareTag(ballTag)) break;
+
+            // Иначе — стена/препятствие между камерой и мячом
+            SetReason($"occluded by {hit.collider.name}");
+            return;
+        }
+
+        // --- Проекция в viewport для получения нормализованного угла ---
+        Vector3 vp = cam.WorldToViewportPoint(targetBall.position);
+        if (vp.z <= 0f) { SetReason("behind camera"); return; }
+
+        IsVisible = true;
+        RelativeAngle = Mathf.Clamp((vp.x - 0.5f) * 2f, -1f, 1f);
+        NormalizedDistance = Mathf.Clamp01(dist / maxDistance);
+        dbg_lastReason = "visible";
+    }
+
+    private void SetReason(string reason)
+    {
+        dbg_lastReason = reason;
+        if (verboseLogging && Time.time - lastLogTime > 2f)
+        {
+            Debug.Log($"[SimulatedYoloCamera] Ball not visible: {reason}", this);
+            lastLogTime = Time.time;
+        }
     }
 
     private void OnDrawGizmosSelected()
     {
+<<<<<<< HEAD
         // Visualize the horizontal FOV cone in the Scene view for easier tuning.
         if (cam == null) cam = GetComponent<Camera>();
         if (cam == null) return;
@@ -138,5 +149,26 @@ public class SimulatedYoloCamera : MonoBehaviour
         Gizmos.DrawLine(origin, origin + leftDir * maxViewDistance);
         Gizmos.DrawLine(origin, origin + rightDir * maxViewDistance);
         Gizmos.DrawLine(origin, origin + cam.transform.forward * maxViewDistance);
+=======
+        if (!drawGizmos || cam == null) return;
+
+        Gizmos.color = IsVisible ? Color.green : new Color(1f, 1f, 1f, 0.5f);
+
+        Vector3 origin = cam.transform.position;
+        Vector3 fwd = cam.transform.forward;
+
+        Quaternion leftRot  = Quaternion.AngleAxis(-hFOV * 0.5f, Vector3.up);
+        Quaternion rightRot = Quaternion.AngleAxis(+hFOV * 0.5f, Vector3.up);
+
+        Gizmos.DrawRay(origin, (leftRot  * fwd) * maxDistance);
+        Gizmos.DrawRay(origin, (rightRot * fwd) * maxDistance);
+        Gizmos.DrawRay(origin, fwd * maxDistance);
+
+        if (IsVisible && targetBall != null)
+        {
+            Gizmos.color = Color.red;
+            Gizmos.DrawLine(origin, targetBall.position);
+        }
+>>>>>>> ade5866945b7458351b0d9a434b11a7a8c2180bb
     }
 }

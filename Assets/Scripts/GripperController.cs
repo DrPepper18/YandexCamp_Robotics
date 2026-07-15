@@ -77,10 +77,12 @@ public class GripperController : MonoBehaviour
             heldBallRb.isKinematic = true;
             heldBallCollider.enabled = false;
 
-            heldBallRb.transform.SetParent(holdPoint);
-            heldBallRb.transform.localPosition = Vector3.zero;
-            heldBallRb.transform.localRotation = Quaternion.identity;
-        }
+        // Крепим к точке. worldPositionStays: true сохраняет мировой масштаб мяча,
+        // иначе он унаследует масштаб родителя (и раздуется/сожмётся).
+        ball.transform.SetParent(holdPoint, worldPositionStays: true);
+        // Затем принудительно телепортируем мяч в позицию HoldPoint, сохраняя размер.
+        ball.transform.position = holdPoint.position;
+        ball.transform.rotation = holdPoint.rotation;
     }
 
     /// <summary>
@@ -98,5 +100,12 @@ public class GripperController : MonoBehaviour
         heldBallRb = null;
         heldBallCollider = null;
         heldBallOriginalParent = null;
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (holdPoint == null) return;
+        Gizmos.color = Color.green;
+        Gizmos.DrawWireSphere(holdPoint.position, grabSearchRadius);
     }
 }
