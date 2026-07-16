@@ -123,9 +123,8 @@ public class RobotBrain : Agent
 
     private bool initialized;
 
-    protected override void Awake()
+    private void Awake()
     {
-        base.Awake();
         EnsureInitialized();
     }
 
@@ -180,6 +179,8 @@ public class RobotBrain : Agent
 
 
         // Сброс мяча
+        if (gripper != null) gripper.isClawClosed = false;
+
         if (ballTransform != null && resetBallOnEpisode)
         {
             Vector3 newBallPos;
@@ -252,8 +253,8 @@ public class RobotBrain : Agent
         o02_leftIR  = sensors != null ? sensors.LeftIR  : 0;
         o03_rightIR = sensors != null ? sensors.RightIR : 0;
 
-        // 4. ИК клешни — берём из GripperController (теперь он сам делает Raycast)
-        o04_gripperIR = gripper != null && gripper.GripDetected ? 1 : 0;
+        // 4. ИК клешни
+        o04_gripperIR = sensors != null ? sensors.GripperIR : 0;
 
         // 5, 6. Угол и дистанция до мяча (по камере)
         bool visible = yoloCamera != null && yoloCamera.IsVisible;
@@ -323,6 +324,8 @@ public class RobotBrain : Agent
                 gripper.GripCommand();
             else if (actGripCmd == 2)
                 gripper.ReleaseCommand();
+            else
+                gripper.isClawClosed = false;
         }
 
         // Состояние (lastKnownBallAngle, timeSinceLastBallSeen, hasBall) и

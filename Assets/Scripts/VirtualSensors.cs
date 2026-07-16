@@ -82,7 +82,6 @@ public class VirtualSensors : MonoBehaviour
     /// <summary>
     /// Веер лучей в конусе ultrasonicConeAngle, ищем ближайшее препятствие,
     /// игнорируя мяч (реальный УЗ слишком грубый, чтобы его видеть).
-    /// Используем Physics.Raycast вместо RaycastAll — не создаёт garbage.
     /// </summary>
     private float ReadUltrasonic(Transform anchor)
     {
@@ -101,8 +100,11 @@ public class VirtualSensors : MonoBehaviour
 
             Vector3 dir = Quaternion.AngleAxis(angle, anchor.up) * anchor.forward;
 
-            // Raycast — без аллокаций массива. Если попали в мяч — пропускаем.
-            if (Physics.Raycast(anchor.position, dir, out RaycastHit hit, ultrasonicMaxDistance, obstacleMask))
+            // RaycastAll, чтобы можно было пропустить мяч и упереться в стену за ним.
+            RaycastHit[] hits = Physics.RaycastAll(anchor.position, dir, ultrasonicMaxDistance, obstacleMask);
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+            foreach (var hit in hits)
             {
                 if (hit.collider.CompareTag(ballTag))
                 {
@@ -114,6 +116,7 @@ public class VirtualSensors : MonoBehaviour
                 {
                     closestDistance = hit.distance;
                 }
+                break; // первое непустое попадание после фильтрации мяча — уже ближайшее
             }
         }
 

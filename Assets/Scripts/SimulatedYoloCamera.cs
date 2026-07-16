@@ -60,7 +60,15 @@ public class SimulatedYoloCamera : MonoBehaviour
         RelativeAngle = 0f;
         NormalizedDistance = 1f;
 
-        // --- Ищем мяч по тегу (если не назначен) ---
+        // --- Ищем камеру, если не назначена ---
+        if (cam == null)
+        {
+            cam = GetComponent<Camera>();
+            if (cam == null) cam = GetComponentInChildren<Camera>();
+            if (cam == null) { SetReason("no camera"); return; }
+        }
+
+        // --- Ищем мяч по тегу ---
         if (targetBall == null && !string.IsNullOrEmpty(ballTag))
         {
             var go = GameObject.FindWithTag(ballTag);
