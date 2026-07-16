@@ -11,13 +11,16 @@ using UnityEngine;
 /// </summary>
 public class GripperController : MonoBehaviour
 {
+    [Header("Собственный поиск мяча")]
+    [SerializeField] private Transform gripperIRPoint;   // точка внутри клешни
+    [SerializeField] private float gripperRange = 0.08f;  // дальность ИК клешни
+    [SerializeField] private string ballTag = "TargetBall"; // тег мяча для проверки
+
     [Header("References")]
     [Tooltip("Empty transform positioned between the claw's jaws")]
     public Transform holdPoint;
 
-    [Tooltip("VirtualSensors component providing the gripper IR reading")]
-    public VirtualSensors sensors;
-
+    
     [Header("Debug")]
     [Tooltip("Radius used only to draw the gizmo at holdPoint, purely visual")]
     [SerializeField] private float grabSearchRadius = 0.05f;
@@ -28,6 +31,9 @@ public class GripperController : MonoBehaviour
 
     /// <summary>True while the gripper is currently holding the ball.</summary>
     public bool IsHolding => heldBallRb != null;
+
+    /// <summary>True if a ball is currently detected in the gripper IR sensor.</summary>
+    public bool GripDetected { get; private set; }
 
     private Rigidbody heldBallRb;
     private Collider heldBallCollider;
@@ -52,44 +58,86 @@ public class GripperController : MonoBehaviour
 
     private void Update()
     {
-        if (sensors == null) return;
+        // Обновляем состояние обнаружения мяча в клешне каждый кадр
+        UpdateGripperDetection();
 
-        // Try to grip when the claw is closed and the gripper IR sees the ball.
-        if (isClawClosed && heldBallRb == null && sensors.GripperIR == 1)
+        // Пытаемся схватить мяч, если клешня закрыта и IR видит мяч
+        if (isClawClosed && heldBallRb == null && GripDetected)
         {
             TryGripBall();
         }
     }
 
     /// <summary>
-    /// Uses the ball collider already detected by VirtualSensors' gripper IR
-    /// this frame and switches it into "logically held" mode: kinematic
-    /// rigidbody, collider disabled, parented to HoldPoint.
+    /// Собственный Raycast для обнаружения мяча в клешне.
+    /// Результат доступен через GripDetected — используется RobotBrain для наблюдения o04.
+    /// </summary>
+    private void UpdateGripperDetection()
+    {
+        if (gripperIRPoint == null)
+        {
+            GripDetected = false;
+            return;
+        }
+
+        if (Physics.Raycast(gripperIRPoint.position, gripperIRPoint.forward, 
+                            out RaycastHit hit, gripperRange))
+        {
+            GripDetected = hit.collider.CompareTag(ballTag);
+        }
+        else
+        {
+            GripDetected = false;
+        }
+    }
+
+    /// <summary>
+    /// Attempt to grip the ball if the claw is closed and IR detects the ball.
+    /// Called from RobotBrain.OnActionReceived via GripCommand().
     /// </summary>
     private void TryGripBall()
     {
-        if (holdPoint == null) return;
+        if (holdPoint == null)
+            return;
 
-        Collider ballCollider = sensors.GripperDetectedBall;
-        if (ballCollider == null) return;
+        // Проверяем, что клешня закрыта и мы ещё не держим мяч
+        if (!isClawClosed || heldBallRb != null)
+            return;
 
-        Rigidbody ballRb = ballCollider.attachedRigidbody;
-        if (ballRb == null) return;
+        // Проверяем, что IR обнаружил мяч (проверено в UpdateGripperDetection)
+        if (!GripDetected)
+            return;
 
-        heldBallRb = ballRb;
-        heldBallCollider = ballCollider;
-        heldBallOriginalParent = heldBallRb.transform.parent;
+        // --- Логика присоединения мяча ---
+        // Ищем мяч через Physics.OverlapSphere в зоне клешни, так как Raycast
+        // в UpdateGripperDetection мог попасть не точно в rigidbody.
+        Collider[] hits = Physics.OverlapSphere(gripperIRPoint.position, gripperRange * 1.5f);
+        
+        foreach (var hit in hits)
+        {
+            if (!hit.CompareTag(ballTag))
+                continue;
 
-        heldBallRb.isKinematic = true;
-        heldBallCollider.enabled = false;
+            Rigidbody ballRb = hit.attachedRigidbody;
+            if (ballRb == null)
+                continue;
 
-        // worldPositionStays: true сохраняет мировой масштаб мяча,
-        // иначе он унаследует масштаб родителя (и раздуется/сожмётся).
-        heldBallRb.transform.SetParent(holdPoint, worldPositionStays: true);
+            heldBallRb = ballRb;
+            heldBallCollider = hit;
+            heldBallOriginalParent = ballRb.transform.parent;
 
-        // Затем принудительно телепортируем мяч в позицию HoldPoint.
-        heldBallRb.transform.position = holdPoint.position;
-        heldBallRb.transform.rotation = holdPoint.rotation;
+            heldBallRb.isKinematic = true;
+            heldBallCollider.enabled = false;
+
+            // worldPositionStays: true сохраняет мировой масштаб мяча
+            ballRb.transform.SetParent(holdPoint, worldPositionStays: true);
+
+            // Принудительно помещаем мяч в точку захвата
+            ballRb.transform.position = holdPoint.position;
+            ballRb.transform.rotation = holdPoint.rotation;
+
+            return;
+        }
     }
 
     /// <summary>
@@ -114,5 +162,12 @@ public class GripperController : MonoBehaviour
         if (holdPoint == null) return;
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(holdPoint.position, grabSearchRadius);
+
+        // Рисуем зону обнаружения мяча в клешне
+        if (gripperIRPoint != null)
+        {
+            Gizmos.color = Color.magenta;
+            Gizmos.DrawRay(gripperIRPoint.position, gripperIRPoint.forward * gripperRange);
+        }
     }
 }

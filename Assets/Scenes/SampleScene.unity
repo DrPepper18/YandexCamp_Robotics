@@ -656,7 +656,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4661769819968994058, guid: a1019ddc1562b1c409930ffbe4daf818, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -4.888
+      value: -4.885
       objectReference: {fileID: 0}
     - target: {fileID: 4661769819968994058, guid: a1019ddc1562b1c409930ffbe4daf818, type: 3}
       propertyPath: m_LocalRotation.w
@@ -686,6 +686,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 8349646193143119697, guid: a1019ddc1562b1c409930ffbe4daf818, type: 3}
+      propertyPath: m_Radius
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -699,6 +703,26 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 2231778264401451503, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 2231778264401451503, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 2231778264401451503, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 2231778264401451503, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 2231778264401451503, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: -90
+      objectReference: {fileID: 0}
     - target: {fileID: 3216211454230427293, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_LocalPosition.x
       value: 2.757
@@ -738,10 +762,22 @@ PrefabInstance:
     - target: {fileID: 6996107869482682956, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_Model
       value: 
-      objectReference: {fileID: 5022602860645237092, guid: f3e6eb012ed85914d8fb13ae4c9b84be, type: 3}
+      objectReference: {fileID: 0}
     - target: {fileID: 6996107869482682956, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_BehaviorType
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6996107869482682956, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_BrainParameters.m_ActionSpec.BranchSizes.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6996107869482682956, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: m_BrainParameters.m_ActionSpec.m_NumContinuousActions
       value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 6996107869482682956, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: 'm_BrainParameters.m_ActionSpec.BranchSizes.Array.data[0]'
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 7093799689733554274, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_LocalScale.x
@@ -805,35 +841,39 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: idlePenalty
-      value: 0.0001
+      value: 0.001
       objectReference: {fileID: 0}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: ballTransform
       value: 
       objectReference: {fileID: 826170664}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
+      propertyPath: successReward
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: reversePenalty
-      value: 0.0005
+      value: 0.001
       objectReference: {fileID: 0}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: frontWallPenalty
-      value: 0.001
+      value: 0.01
       objectReference: {fileID: 0}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: approachRewardScale
-      value: 0.07
+      value: 5
       objectReference: {fileID: 0}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: centeringBonusScale
-      value: 0.03
+      value: 0.01
       objectReference: {fileID: 0}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: wallProximityPenalty
-      value: 0.001
+      value: 0.002
       objectReference: {fileID: 0}
     - target: {fileID: 8897397693999528260, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: actionRatePenaltyScale
-      value: 0.01
+      value: 0.001
       objectReference: {fileID: 0}
     - target: {fileID: 8905910208110426861, guid: 1541692e3ebb0ee4686d20fc55b4fb78, type: 3}
       propertyPath: m_LocalPosition.x

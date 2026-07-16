@@ -63,7 +63,6 @@ public class BrainDebugHUD : MonoBehaviour
         sb.AppendLine("<b>ACTIONS</b>");
         sb.AppendLine(Row("Gas    (W/S)     ", FmtSigned(brain.ActGas),       "cyan"));
         sb.AppendLine(Row("Steer  (A/D)     ", FmtSigned(brain.ActSteer),     "cyan"));
-        sb.AppendLine(Row("Camera (Q/E)     ", FmtSigned(brain.ActCameraCmd), "cyan"));
         sb.AppendLine(Row("Grip   (Sp/Sh)   ", brain.ActGripCmd + GripLabel(brain.ActGripCmd), "yellow"));
 
         sb.AppendLine();

@@ -12,32 +12,32 @@ using UnityEngine;
 public class VirtualSensors : MonoBehaviour
 {
     [Header("УЗ датчики (Empty GameObject'ы)")]
-    [SerializeField] private Transform leftSuperSonic;   // левый УЗ
-    [SerializeField] private Transform rightSuperSonic;  // правый УЗ
+    [SerializeField] public Transform leftUltrasonicAnchor;   // вместо leftSuperSonic
+    [SerializeField] public Transform rightUltrasonicAnchor; // вместо rightSuperSonic
 
     [Header("ИК препятствий")]
-    [SerializeField] private Transform leftIRPoint;      // ИК слева
-    [SerializeField] private Transform centerIRPoint;    // ИК по центру
-    [SerializeField] private Transform rightIRPoint;     // ИК справа
+    [SerializeField] public Transform leftIRPoint;      // ИК слева
+    [SerializeField] public Transform centerIRPoint;    // ИК по центру
+    [SerializeField] public Transform rightIRPoint;     // ИК справа
 
     [Header("ИК клешни (опционально)")]
-    [SerializeField] private Transform gripperIRPoint;   // ИК внутрь захвата
+    [SerializeField] public Transform gripperIRPoint;   // ИК внутрь захвата
 
     [Header("Настройки ультразвука")]
     [Tooltip("Максимальная дистанция УЗ, м")]
-    [SerializeField] private float ultrasonicMaxDistance = 2.0f;
+    [SerializeField] public float ultrasonicMaxDistance = 2.0f;
     [Tooltip("Полный угол конуса обзора, градусов")]
-    [SerializeField] private float ultrasonicConeAngle = 30f;
+    [SerializeField] public float ultrasonicConeAngle = 30f;
     [Tooltip("Количество лучей в веере (нечётное — центральный + симметричные)")]
-    [SerializeField] private int ultrasonicRayCount = 5;
+    [SerializeField] public int ultrasonicRayCount = 5;
 
     [Header("Настройки ИК препятствий")]
     [Tooltip("Дальность ИК препятствий, м (реальные ~15 см)")]
-    [SerializeField] private float irObstacleDistance = 0.15f;
+    [SerializeField] public float irObstacleDistance = 0.15f;
 
     [Header("Настройки ИК клешни")]
     [Tooltip("Дальность ИК клешни, м (реальные ~7-8 см)")]
-    [SerializeField] private float gripperIRDistance = 0.08f;
+    [SerializeField] public float gripperIRDistance = 0.08f;
 
     [Header("Layers / tags")]
     [Tooltip("Слои, которые считаются препятствиями/стенами")]
@@ -69,8 +69,8 @@ public class VirtualSensors : MonoBehaviour
 
     private void Update()
     {
-        UltrasonicLeft = ReadUltrasonic(leftSuperSonic);
-        UltrasonicRight = ReadUltrasonic(rightSuperSonic);
+        UltrasonicLeft = ReadUltrasonic(leftUltrasonicAnchor);
+        UltrasonicRight = ReadUltrasonic(rightUltrasonicAnchor);
 
         LeftIR = ReadObstacleIR(leftIRPoint, irObstacleDistance);
         CenterIR = ReadObstacleIR(centerIRPoint, irObstacleDistance);
@@ -82,6 +82,7 @@ public class VirtualSensors : MonoBehaviour
     /// <summary>
     /// Веер лучей в конусе ultrasonicConeAngle, ищем ближайшее препятствие,
     /// игнорируя мяч (реальный УЗ слишком грубый, чтобы его видеть).
+    /// Используем Physics.Raycast вместо RaycastAll — не создаёт garbage.
     /// </summary>
     private float ReadUltrasonic(Transform anchor)
     {
@@ -100,11 +101,8 @@ public class VirtualSensors : MonoBehaviour
 
             Vector3 dir = Quaternion.AngleAxis(angle, anchor.up) * anchor.forward;
 
-            // RaycastAll, чтобы можно было пропустить мяч и упереться в стену за ним.
-            RaycastHit[] hits = Physics.RaycastAll(anchor.position, dir, ultrasonicMaxDistance, obstacleMask);
-            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-
-            foreach (var hit in hits)
+            // Raycast — без аллокаций массива. Если попали в мяч — пропускаем.
+            if (Physics.Raycast(anchor.position, dir, out RaycastHit hit, ultrasonicMaxDistance, obstacleMask))
             {
                 if (hit.collider.CompareTag(ballTag))
                 {
@@ -116,7 +114,6 @@ public class VirtualSensors : MonoBehaviour
                 {
                     closestDistance = hit.distance;
                 }
-                break; // первое непустое попадание после фильтрации мяча — уже ближайшее
             }
         }
 
@@ -176,8 +173,8 @@ public class VirtualSensors : MonoBehaviour
 
         // УЗ конусы — левый и правый
         Gizmos.color = Color.cyan;
-        DrawUltrasonicCone(leftSuperSonic);
-        DrawUltrasonicCone(rightSuperSonic);
+        DrawUltrasonicCone(leftUltrasonicAnchor);
+        DrawUltrasonicCone(rightUltrasonicAnchor);
 
         // ИК препятствий
         Gizmos.color = Color.yellow;

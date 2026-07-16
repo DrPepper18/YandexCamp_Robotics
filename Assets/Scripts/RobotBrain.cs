@@ -15,7 +15,7 @@ public class RobotBrain : Agent
     [SerializeField] private VirtualSensors sensors;
     [SerializeField] private GripperController gripper;
     [SerializeField] private SimulatedYoloCamera yoloCamera;
-    [SerializeField] private Transform cameraServo;   // может быть null, если камера не вращается
+    [SerializeField] private DomainRandomizer randomizer;
     [SerializeField] private Rigidbody rb;
 
     [Header("Цель и арена")]
@@ -35,24 +35,25 @@ public class RobotBrain : Agent
     [Tooltip("Максимальная дистанция спавна мяча от робота (только для рандомизации), м")]
     [SerializeField] private float ballSpawnMaxDistance = 1.5f;
 
-    [Header("Сервопривод камеры (если есть)")]
-    [SerializeField] private float servoMaxAngle = 90f;
-    [SerializeField] private float servoSpeed    = 60f;
-
     [Header("Награды")]
-    [SerializeField] private float approachRewardScale    = 0.05f;
-    [SerializeField] private float actionRatePenaltyScale = 0.001f;
-    [SerializeField] private float centeringBonusScale    = 0.01f;
-    [SerializeField] private float wallProximityPenalty   = 0.02f;
-    [SerializeField] private float successReward          = 5.0f;
-    [SerializeField] private float wallCriticalUsThreshold = 0.15f;
-    [SerializeField] private float closeApproachDistance   = 0.3f;
-    [SerializeField] private float approachDecayRate       = 8f;
-    [SerializeField] private float idleSpeedThreshold      = 0.05f;
-    [SerializeField] private float idlePenalty             = 0.001f;
-    [SerializeField] private float reversePenalty          = 0.001f;
-    [SerializeField] private float frontWallThreshold      = 0.3f;
-    [SerializeField] private float frontWallPenalty        = 0.01f;
+    [SerializeField] private float actionRatePenaltyScale = 0.001f; // штраф за резкое изменение газа/руля (сумма модулей разностей действий)
+    [SerializeField] private float centeringBonusScale    = 0.001f; // бонус за удержание мяча в центре камеры (1 - |угол|)
+    [SerializeField] private float wallProximityPenalty   = 0.02f; // штраф за критическое сближение с боковыми стенами (по УЗ и ИК)
+    [SerializeField] private float successReward          = 5.0f; // терминальная награда за успешный захват мяча
+    [SerializeField] private float idlePenalty             = 0.001f; // штраф за бездействие (накладывается каждый шаг при скорости ниже порога)
+    [SerializeField] private float reversePenalty          = 0.001f; // штраф за движение назад (газ < 0)
+    [SerializeField] private float frontWallPenalty        = 0.01f; // величина штрафа за фронтальное препятствие
+    [SerializeField] private float outOfBoundsPenalty      = -2.0f;
+
+    [SerializeField] private float explorationLinearBonus = 0.002f; // для исследования что делать если мяч не виден (за стеной)
+    [SerializeField] private float explorationAngularPenalty = 0.001f;
+
+    [SerializeField] private float approachRewardScale    = 10f; // масштаб награды за приближение к мячу (множитель к delta distance)
+    [SerializeField] private float idleSpeedThreshold      = 0.05f; // порог скорости (м/с), ниже которого робот считается бездействующим
+    [SerializeField] private float approachDecayRate       = 4f; // коэффициент экспоненциального затухания – чем больше, тем сильнее гасится скорость вблизи мяча
+    [SerializeField] private float wallCriticalUsThreshold = 0.15f; // порог нормализованного УЗ-сигнала, ниже которого стена считается опасной
+    [SerializeField] private float frontWallThreshold      = 0.3f; // порог нормализованного УЗ-сигнала спереди, при котором накладывается штраф за препятствие впереди
+    [SerializeField] private float closeApproachDistance   = 0.3f; // расстояние, на котором включается экспоненциальное затухание награды за приближение
 
     [Tooltip("Собственный лимит шагов эпизода (не зависит от Agent.MaxStep). 0 = без лимита.")]
     [SerializeField] private int customMaxSteps = 3000;
@@ -78,7 +79,6 @@ public class RobotBrain : Agent
     [Header("ACTIONS (read-only, для отладки)")]
     [SerializeField] private float actGas;
     [SerializeField] private float actSteer;
-    [SerializeField] private float actCameraCmd;
     [SerializeField] private int   actGripCmd;
 
     [Header("REWARD (read-only)")]
@@ -104,7 +104,6 @@ public class RobotBrain : Agent
 
     public float ActGas        => actGas;
     public float ActSteer      => actSteer;
-    public float ActCameraCmd  => actCameraCmd;
     public int   ActGripCmd    => actGripCmd;
 
     public float StepReward       => rewardStep;
@@ -115,7 +114,6 @@ public class RobotBrain : Agent
     private Quaternion startRotation;
     private float lastKnownBallAngle;
     private float timeSinceLastBallSeen;
-    private float servoAngle;
     private float prevDistanceToBall;
     private float prevGas, prevSteer;
     private bool  hasBall;
@@ -125,8 +123,9 @@ public class RobotBrain : Agent
 
     private bool initialized;
 
-    private void Awake()
+    protected override void Awake()
     {
+        base.Awake();
         EnsureInitialized();
     }
 
@@ -169,6 +168,8 @@ public class RobotBrain : Agent
 
     public override void OnEpisodeBegin()
     {
+        randomizer?.Apply();
+
         transform.SetPositionAndRotation(startPosition, startRotation);
         if (rb != null)
         {
@@ -177,8 +178,6 @@ public class RobotBrain : Agent
         }
         if (gripper != null && gripper.IsHolding) gripper.ReleaseCommand();
 
-        servoAngle = 0f;
-        if (cameraServo != null) cameraServo.localRotation = Quaternion.identity;
 
         // Сброс мяча
         if (ballTransform != null && resetBallOnEpisode)
@@ -207,7 +206,11 @@ public class RobotBrain : Agent
             ballTransform.position = newBallPos;
 
             var ballRb = ballTransform.GetComponent<Rigidbody>();
-            if (ballRb != null) { ballRb.linearVelocity = Vector3.zero; ballRb.angularVelocity = Vector3.zero; }
+            if (ballRb != null) 
+            { 
+                ballRb.linearVelocity = Vector3.zero; 
+                ballRb.angularVelocity = Vector3.zero; 
+            }
         }
 
         lastKnownBallAngle = 0f;
@@ -229,6 +232,17 @@ public class RobotBrain : Agent
     /// <summary>Обновляет все 15 полей наблюдений (можно вызывать из HUD или наградного расчёта).</summary>
     private void ComputeObservations()
     {
+        if (randomizer != null)
+        {
+            o01_ultrasonic = randomizer.AddNoise(o01_ultrasonic, randomizer.UltrasonicNoiseStd);
+            o05_ballAngle = randomizer.AddNoise(o05_ballAngle, randomizer.CameraAngleNoiseStd);
+            o06_ballDistance = randomizer.AddNoise(o06_ballDistance, randomizer.CameraDistNoiseStd);
+        }
+        // и обязательно ограничить диапазон после шума
+        o01_ultrasonic = Mathf.Clamp01(o01_ultrasonic);
+        o05_ballAngle = Mathf.Clamp(o05_ballAngle, -1f, 1f);
+        o06_ballDistance = Mathf.Clamp01(o06_ballDistance);
+
         // 1. УЗ (мин из двух)
         o01_ultrasonic = sensors != null
             ? Mathf.Min(sensors.UltrasonicLeft, sensors.UltrasonicRight)
@@ -238,8 +252,8 @@ public class RobotBrain : Agent
         o02_leftIR  = sensors != null ? sensors.LeftIR  : 0;
         o03_rightIR = sensors != null ? sensors.RightIR : 0;
 
-        // 4. ИК клешни
-        o04_gripperIR = sensors != null ? sensors.GripperIR : 0;
+        // 4. ИК клешни — берём из GripperController (теперь он сам делает Raycast)
+        o04_gripperIR = gripper != null && gripper.GripDetected ? 1 : 0;
 
         // 5, 6. Угол и дистанция до мяча (по камере)
         bool visible = yoloCamera != null && yoloCamera.IsVisible;
@@ -252,8 +266,8 @@ public class RobotBrain : Agent
         // 8. Флаг видимости
         o08_ballVisible = visible ? 1f : 0f;
 
-        // 9. Угол сервопривода (нормализованный)
-        o09_servoAngleNorm = servoAngle / Mathf.Max(1f, servoMaxAngle);
+        // 9. Угол сервопривода – всегда 0, т.к. камера не вращается
+        o09_servoAngleNorm = 0f;
 
         // 10. hasBall
         o10_hasBall = hasBall ? 1f : 0f;
@@ -299,24 +313,16 @@ public class RobotBrain : Agent
     {
         actGas       = Mathf.Clamp(actions.ContinuousActions[0], -1f, 1f);
         actSteer     = Mathf.Clamp(actions.ContinuousActions[1], -1f, 1f);
-        actCameraCmd = Mathf.Clamp(actions.ContinuousActions[2], -1f, 1f);
         actGripCmd   = actions.DiscreteActions[0];
 
         if (trackController != null) trackController.SetCommand(actGas, actSteer);
 
-        // Сервопривод — только если назначен
-        if (cameraServo != null)
-        {
-            servoAngle = Mathf.Clamp(
-                servoAngle + actCameraCmd * servoSpeed * Time.fixedDeltaTime,
-                -servoMaxAngle, servoMaxAngle);
-            cameraServo.localRotation = Quaternion.Euler(0f, 0f, servoAngle);
-        }
-
         if (gripper != null)
         {
-            if (actGripCmd == 1) gripper.GripCommand();
-            else                 gripper.ReleaseCommand();
+            if (actGripCmd == 1) 
+                gripper.GripCommand();
+            else if (actGripCmd == 2)
+                gripper.ReleaseCommand();
         }
 
         // Состояние (lastKnownBallAngle, timeSinceLastBallSeen, hasBall) и
@@ -336,7 +342,11 @@ public class RobotBrain : Agent
         {
             episodeStepCount++;
             if (episodeStepCount >= customMaxSteps)
-                EpisodeInterrupted();
+            {
+                AddReward(-0.1f);
+                EndEpisode();
+                return; // предотвращаем дальнейшее выполнение метода
+            }
         }
     }
 
@@ -352,6 +362,7 @@ public class RobotBrain : Agent
         float delta = prevDistanceToBall - currentDistance;
         float proximityFactor = Mathf.Clamp01(1f - currentDistance / 2f);
         float approachReward = delta * approachRewardScale * (1f + proximityFactor);
+
         if (currentDistance < closeApproachDistance)
         {
             // Экспоненциальное затухание вблизи мяча — учим подъезжать аккуратно, а не влетать.
@@ -362,8 +373,19 @@ public class RobotBrain : Agent
         AddReward(approachReward);
         prevDistanceToBall = currentDistance;
 
-        float actionDiff = Mathf.Abs(gas - prevGas) + Mathf.Abs(steer - prevSteer);
-        AddReward(-actionDiff * actionRatePenaltyScale);
+        bool ballVisible = yoloCamera != null && yoloCamera.IsVisible; // штраф за резкость
+        if (!ballVisible)
+        {
+            float forwardSpeed = Vector3.Dot(rb.linearVelocity, transform.forward);
+            AddReward(forwardSpeed * explorationLinearBonus);           // + за движение вперёд
+            AddReward(-Mathf.Abs(steer) * explorationAngularPenalty);   // - за повороты
+        }
+
+        if (episodeStepCount > 0)
+        {
+            float actionDiff = Mathf.Abs(gas - prevGas) + Mathf.Abs(steer - prevSteer);
+            AddReward(-actionDiff * actionRatePenaltyScale);
+        }
 
         if (rb != null && rb.linearVelocity.magnitude < idleSpeedThreshold)
             AddReward(-idlePenalty);
@@ -371,10 +393,10 @@ public class RobotBrain : Agent
         if (gas < 0f)
             AddReward(-reversePenalty);
 
-        if (yoloCamera != null && yoloCamera.IsVisible)
+        if (yoloCamera != null && yoloCamera.IsVisible && delta > 0f)
             AddReward((1f - Mathf.Abs(yoloCamera.RelativeAngle)) * centeringBonusScale);
 
-        if (o01_ultrasonic < frontWallThreshold)
+        if (currentDistance > closeApproachDistance && o01_ultrasonic < frontWallThreshold)
             AddReward(-frontWallPenalty);
 
         if (sensors != null)
@@ -391,6 +413,15 @@ public class RobotBrain : Agent
             EndEpisode();
             return;
         }
+
+        Vector3 pos = transform.position;
+        if (pos.x < arenaMin.x || pos.x > arenaMax.x ||
+
+            pos.z < arenaMin.z || pos.z > arenaMax.z)
+        {
+            AddReward(outOfBoundsPenalty);
+            EndEpisode();
+        }
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -406,11 +437,6 @@ public class RobotBrain : Agent
 
         continuous[0] = Input.GetAxis("Vertical");
         continuous[1] = Input.GetAxis("Horizontal");
-
-        float camCmd = 0f;
-        if (Input.GetKey(KeyCode.Q)) camCmd -= 1f;
-        if (Input.GetKey(KeyCode.E)) camCmd += 1f;
-        continuous[2] = camCmd;
 
         int grip = 0;
         if (Input.GetKey(KeyCode.Space))          grip = 1;

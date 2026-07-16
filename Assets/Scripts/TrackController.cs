@@ -12,10 +12,10 @@ public class TrackController : MonoBehaviour
 {
     [Header("Базовые скорости")]
     [Tooltip("Базовая линейная скорость робота, м/с")]
-    [SerializeField] private float moveSpeed = 0.57f;
+    [SerializeField] public float moveSpeed = 0.57f;
 
     [Tooltip("Базовая скорость поворота, град/с")]
-    [SerializeField] private float turnSpeed = 120f;
+    [SerializeField] public float turnSpeed = 120f;
 
     [Tooltip("Коэффициент влияния руля на скорости бортов")]
     [SerializeField] private float turnK = 0.30f;
@@ -102,13 +102,8 @@ public class TrackController : MonoBehaviour
         float linearOut = (leftEff + rightEff) * 0.5f;
 
         //    angular = steer * turnK * moveSpeed  =>  steer = (right - left) / (2 * turnK * moveSpeed)
-        float steerEff = 0f;
-        if (turnK > 0.0001f && moveSpeed > 0.0001f)
-        {
-            steerEff = (rightEff - leftEff) / (2f * turnK * moveSpeed);
-            steerEff = Mathf.Clamp(steerEff, -1f, 1f);
-        }
-        float angularOutDegPerSec = steerEff * turnSpeed;
+        
+        float angularOutDegPerSec = steer * turnSpeed;
 
         // 7. Применяем к Rigidbody
         Vector3 deltaMove = transform.forward * linearOut * Time.fixedDeltaTime;
