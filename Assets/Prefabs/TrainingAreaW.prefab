@@ -945,7 +945,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7207475054657151718}
   m_Layer: 0
-  m_Name: RightIRPoint
+  m_Name: LeftIRPoint
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -960,7 +960,7 @@ Transform:
   m_GameObject: {fileID: 1441410753065837783}
   serializedVersion: 2
   m_LocalRotation: {x: 0.70710677, y: 0, z: 0, w: 0.70710677}
-  m_LocalPosition: {x: 0.00969, y: -0.00425, z: 0.00294}
+  m_LocalPosition: {x: 0.01, y: -0.0034, z: 0.00277}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3379,9 +3379,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::VirtualSensors
   leftSuperSonic: {fileID: 6924780278041814556}
   rightSuperSonic: {fileID: 1267353453692927912}
-  leftIRPoint: {fileID: 5170094942705188053}
+  leftIRPoint: {fileID: 7207475054657151718}
   centerIRPoint: {fileID: 779465601355282574}
-  rightIRPoint: {fileID: 7207475054657151718}
+  rightIRPoint: {fileID: 5170094942705188053}
   gripperIRPoint: {fileID: 8314141221737474637}
   ultrasonicMaxDistance: 2
   ultrasonicConeAngle: 30
@@ -3454,8 +3454,8 @@ MonoBehaviour:
   ballTag: TargetBall
   arenaCenter: {fileID: 4683923553705076831}
   arenaHalf: 2
-  ballMinForward: 2.7
-  ballMaxForward: 3.8
+  ballMinForward: 1.2
+  ballMaxForward: 2.4
   ballHalfWidth: 1.5
   robotSpawnJitter: 1
   fallDrop: 0.5
@@ -3467,7 +3467,7 @@ MonoBehaviour:
   nearBoost: 2
   centerReward: 0.003
   actionRatePenalty: 0.005
-  gripChatterPenalty: 0.01
+  gripChatterPenalty: 0.003
   wallPenalty: 0.02
   stepPenalty: 0.0001
   reversePenalty: 0.004
@@ -3675,7 +3675,7 @@ GameObject:
   m_Component:
   - component: {fileID: 5170094942705188053}
   m_Layer: 0
-  m_Name: LeftIRPoint
+  m_Name: RightIRPoint
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3690,7 +3690,7 @@ Transform:
   m_GameObject: {fileID: 7613862063275148916}
   serializedVersion: 2
   m_LocalRotation: {x: -0.5, y: 0.5, z: 0.5, w: 0.5}
-  m_LocalPosition: {x: 0.01148, y: 0.01106, z: 0.00333}
+  m_LocalPosition: {x: 0.01, y: 0.0098, z: 0.00277}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
