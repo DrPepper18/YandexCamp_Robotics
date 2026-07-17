@@ -39,7 +39,7 @@ public class RobotBrain : Agent
     private float actionRatePenaltyScale = 0.001f; // штраф за резкое изменение газа/руля (сумма модулей разностей действий)
     private float centeringBonusScale    = 0.01f; // бонус за удержание мяча в центре камеры (1 - |угол|)
     private float wallProximityPenalty   = 0.02f; // штраф за критическое сближение с боковыми стенами (по УЗ и ИК)
-    private float successReward          = 5.0f; // терминальная награда за успешный захват мяча
+    private float successReward          = 10.0f; // терминальная награда за успешный захват мяча
     private float idlePenalty             = 0.001f; // штраф за бездействие (накладывается каждый шаг при скорости ниже порога)
     private float reversePenalty          = 0.001f; // штраф за движение назад (газ < 0)
     private float frontWallPenalty        = 0.02f; // величина штрафа за фронтальное препятствие
@@ -47,7 +47,7 @@ public class RobotBrain : Agent
 
     [Header("Награды за удержание")]
     [SerializeField] private int requiredHoldSteps = 50; // число шагов удержания (при FixedUpdate 50 Гц это 1 сек)
-    [SerializeField] private float holdSuccessReward = 1.0f; // огромная награда за успешное удержание
+    [SerializeField] private float holdSuccessReward = 2.0f; // огромная награда за успешное удержание
     [SerializeField] private float holdDropPenalty = -1.0f;  // огромный штраф за бросание во время удержания
     [SerializeField] private float holdStepReward = 0.1f; // бонус за каждый кадр удержания мяча
     private bool isHoldingBall;       // true, если сейчас идёт отсчёт удержания
