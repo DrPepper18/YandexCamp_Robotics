@@ -135,8 +135,9 @@ public class RobotBrain : Agent
 
     private bool initialized;
 
-    private void Awake()
+    private new void Awake()
     {
+        base.Awake();
         EnsureInitialized();
 
         if (randomizer != null)
@@ -289,7 +290,8 @@ public class RobotBrain : Agent
         o06_ballDistance = visible ? yoloCamera.NormalizedDistance : 1f;
 
         // 7. Последнее известное направление
-        o07_lastKnownAngle = lastKnownBallAngle;
+        // o07_lastKnownAngle = lastKnownBallAngle;
+        o07_lastKnownAngle = visible ? lastKnownBallAngle : 0f;
 
         // 8. Флаг видимости
         o08_ballVisible = visible ? 1f : 0f;
@@ -313,7 +315,8 @@ public class RobotBrain : Agent
         o14_speed = rb != null ? rb.linearVelocity.magnitude : 0f;
 
         // 15. Время с последней детекции (нормализованное к 10 сек)
-        o15_timeSinceBallNorm = Mathf.Clamp(timeSinceLastBallSeen, 0f, 10f) / 10f;
+        //o15_timeSinceBallNorm = Mathf.Clamp(timeSinceLastBallSeen, 0f, 10f) / 10f;
+        o15_timeSinceBallNorm = 1f;
     }
 
     public override void CollectObservations(VectorSensor sensor)
@@ -424,7 +427,7 @@ public class RobotBrain : Agent
         float currentDistance = Vector3.Distance(refPos, ballTransform.position);
 
         float delta = prevDistanceToBall - currentDistance;
-        float proximityFactor = Mathf.Clamp01(1f - currentDistance / 2f);
+        /*float proximityFactor = Mathf.Clamp01(1f - currentDistance / 2f);
         float approachReward = delta * approachRewardScale * (1f + proximityFactor);
 
         if (currentDistance < closeApproachDistance)
@@ -435,9 +438,24 @@ public class RobotBrain : Agent
             approachReward *= Mathf.Exp(-approachDecayRate * (1f - t));
         }
         AddReward(approachReward);
-        prevDistanceToBall = currentDistance;
+        prevDistanceToBall = currentDistance;*/
 
-        bool ballVisible = yoloCamera != null && yoloCamera.IsVisible; // штраф за резкость
+        bool ballVisible = yoloCamera != null && yoloCamera.IsVisible;
+
+        if (ballVisible)
+        {
+            float proximityFactor = Mathf.Clamp01(1f - currentDistance / 2f);
+            float approachReward = delta * approachRewardScale * (1f + proximityFactor);
+
+            if (currentDistance < closeApproachDistance)
+            {
+                float t = Mathf.Clamp01(currentDistance / closeApproachDistance);
+                approachReward *= Mathf.Exp(-approachDecayRate * (1f - t));
+            }
+            AddReward(approachReward);
+            prevDistanceToBall = currentDistance;
+        }
+
         if (!ballVisible)
         {
             float forwardSpeed = Vector3.Dot(rb.linearVelocity, transform.forward);
