@@ -36,14 +36,14 @@ public class RobotBrain : Agent
     [SerializeField] private float ballSpawnMaxDistance = 1.5f;
 
     [Header("Награды")]
-    private float actionRatePenaltyScale = 0.001f; // штраф за резкое изменение газа/руля (сумма модулей разностей действий)
-    private float centeringBonusScale    = 0.01f; // бонус за удержание мяча в центре камеры (1 - |угол|)
-    private float wallProximityPenalty   = 0.01f; // штраф за критическое сближение с боковыми стенами (по УЗ и ИК)
-    private float successGrabbed         = 5.0f; //  награда за успешный захват мяча
-    private float idlePenalty             = 0.001f; // штраф за бездействие (накладывается каждый шаг при скорости ниже порога)
-    private float reversePenalty          = 0.001f; // штраф за движение назад (газ < 0)
-    private float frontWallPenalty        = 0.02f; // величина штрафа за фронтальное препятствие
-    private float outOfBoundsPenalty      = -2.0f;
+    [SerializeField] private float actionRatePenaltyScale = 0.001f; // штраф за резкое изменение газа/руля (сумма модулей разностей действий)
+    [SerializeField] private float centeringBonusScale    = 0.01f; // бонус за удержание мяча в центре камеры (1 - |угол|)
+    [SerializeField] private float wallProximityPenalty   = 0.02f; // штраф за критическое сближение с боковыми стенами (по УЗ и ИК)
+    [SerializeField] private float successReward          = 5.0f; // терминальная награда за успешный захват мяча
+    [SerializeField] private float idlePenalty             = 0.001f; // штраф за бездействие (накладывается каждый шаг при скорости ниже порога)
+    [SerializeField] private float reversePenalty          = 0.001f; // штраф за движение назад (газ < 0)
+    [SerializeField] private float frontWallPenalty        = 0.02f; // величина штрафа за фронтальное препятствие
+    [SerializeField] private float outOfBoundsPenalty      = -2.0f;
 
     [Header("Награды за удержание")]
     [SerializeField] private int requiredHoldSteps = 50; // число шагов удержания (при FixedUpdate 50 Гц это 1 сек)
@@ -377,40 +377,39 @@ public class RobotBrain : Agent
     }
 
     private void CheckHoldStatus()
+{
+    bool currentlyHolding = hasBall;
+
+    if (currentlyHolding)
     {
-        bool currentlyHolding = hasBall;
+        // Награда за сам факт удержания в этом кадре
+        AddReward(holdStepReward);
 
-        if (currentlyHolding)
+        if (!isHoldingBall)
         {
-            // Награда за сам факт удержания в этом кадре
-            AddReward(holdStepReward);
-
-            if (!isHoldingBall)
-            {
-                // Только что схватили – начинаем отсчёт
-                AddReward(successGrabbed);
-                isHoldingBall = true;
-                holdStepCounter = 0;
-            }
-            else
-            {
-                holdStepCounter++;
-                if (holdStepCounter >= requiredHoldSteps)
-                {
-                    // Удержали достаточно долго – большая награда и конец эпизода
-                    AddReward(holdSuccessReward);
-                    Academy.Instance.StatsRecorder.Add("Custom/BallPickups", 1f, StatAggregationMethod.Sum);
-                    EndEpisode();
-                }
-            }
+            // Только что схватили – начинаем отсчёт
+            isHoldingBall = true;
+            holdStepCounter = 0;
         }
-        else if (isHoldingBall)
+        else
         {
-            // Бросили мяч во время удержания – штраф и конец эпизода
-            AddReward(holdDropPenalty);
-            EndEpisode();
+            holdStepCounter++;
+            if (holdStepCounter >= requiredHoldSteps)
+            {
+                // Удержали достаточно долго – большая награда и конец эпизода
+                AddReward(holdSuccessReward);
+                Academy.Instance.StatsRecorder.Add("Custom/BallPickups", 1f, StatAggregationMethod.Sum);
+                EndEpisode();
+            }
         }
     }
+    else if (isHoldingBall)
+    {
+        // Бросили мяч во время удержания – штраф и конец эпизода
+        AddReward(holdDropPenalty);
+        EndEpisode();
+    }
+}
 
     private void ApplyRewards(float gas, float steer)
     {
