@@ -1,5 +1,5 @@
 using UnityEngine;
-
+using Unity.MLAgents;
 /// <summary>
 /// Доменная рандомизация параметров робота, датчиков и среды.
 /// Вызывается в начале каждого эпизода из RobotBrain.OnEpisodeBegin().
@@ -54,6 +54,28 @@ public class DomainRandomizer : MonoBehaviour
     private Vector3 originalStartPosition;
     private Quaternion originalStartRotation;
 
+    private void EnsureInitialized()
+    {
+        if (robotRb == null)
+        {
+            var robotObj = robotTransform?.gameObject;
+            if (robotObj != null)
+                robotRb = robotObj.GetComponent<Rigidbody>();
+        }
+
+        if (robotCollider == null && robotTransform != null)
+            robotCollider = robotTransform.GetComponent<Collider>();
+
+        if (trackController == null && robotTransform != null)
+            trackController = robotTransform.GetComponent<TrackController>();
+
+        if (sensors == null && robotTransform != null)
+            sensors = robotTransform.GetComponent<VirtualSensors>();
+
+        if (yoloCamera == null && robotTransform != null)
+            yoloCamera = robotTransform.GetComponent<SimulatedYoloCamera>();
+    }
+
     private void Awake()
     {
         if (robotTransform != null)
@@ -63,15 +85,28 @@ public class DomainRandomizer : MonoBehaviour
         }
     }
 
+    public void ApplyOnStart()   // можно переименовать, чтобы не путать с Apply()
+    {
+        Apply();
+    }
+
     /// <summary>
     /// Применяет рандомизацию ко всем параметрам. Вызывать в начале эпизода.
     /// </summary>
     public void Apply()
     {
+        EnsureInitialized();
+        
+        Debug.Log($"[DomainRandomizer] Applying randomization...");
+
         RandomizePhysics();
         RandomizeMotors();
         RandomizeSensors();
         RandomizeStartPose();
+
+        Debug.Log($"[DomainRandomizer] Mass = {robotRb?.mass:F2}, " +
+              $"MoveSpeed = {trackController?.moveSpeed:F2}, " +
+              $"TurnSpeed = {trackController?.turnSpeed:F0}");
     }
 
     private void RandomizePhysics()
@@ -81,6 +116,10 @@ public class DomainRandomizer : MonoBehaviour
             robotRb.mass = Random.Range(massRange.x, massRange.y);
             robotRb.linearDamping = Random.Range(linearDampingRange.x, linearDampingRange.y);
             robotRb.angularDamping = Random.Range(angularDampingRange.x, angularDampingRange.y);
+        
+            Academy.Instance.StatsRecorder.Add("Randomization/Mass", robotRb.mass);
+            Academy.Instance.StatsRecorder.Add("Randomization/LinearDamping", robotRb.linearDamping);
+            Academy.Instance.StatsRecorder.Add("Randomization/AngularDamping", robotRb.angularDamping);
         }
 
         if (robotCollider != null && robotCollider.material != null)
@@ -88,6 +127,9 @@ public class DomainRandomizer : MonoBehaviour
             var mat = robotCollider.material;
             mat.dynamicFriction = Random.Range(0.3f, 0.7f);
             mat.staticFriction = Random.Range(0.4f, 0.8f);
+
+            Academy.Instance.StatsRecorder.Add("Randomization/DynamicFriction", mat.dynamicFriction);
+            Academy.Instance.StatsRecorder.Add("Randomization/StaticFriction", mat.staticFriction);
         }
     }
 
@@ -97,6 +139,9 @@ public class DomainRandomizer : MonoBehaviour
 
         trackController.moveSpeed = Random.Range(moveSpeedRange.x, moveSpeedRange.y);
         trackController.turnSpeed = Random.Range(turnSpeedRange.x, turnSpeedRange.y);
+    
+        Academy.Instance.StatsRecorder.Add("Randomization/MoveSpeed", trackController.moveSpeed);
+        Academy.Instance.StatsRecorder.Add("Randomization/TurnSpeed", trackController.turnSpeed);
     }
 
     private void RandomizeSensors()
@@ -107,6 +152,11 @@ public class DomainRandomizer : MonoBehaviour
         sensors.ultrasonicConeAngle = Random.Range(ultrasonicConeAngleRange.x, ultrasonicConeAngleRange.y);
         sensors.irObstacleDistance = Random.Range(irObstacleDistRange.x, irObstacleDistRange.y);
         sensors.gripperIRDistance = Random.Range(gripperIRDistRange.x, gripperIRDistRange.y);
+    
+        Academy.Instance.StatsRecorder.Add("Randomization/UltrasonicMaxDist", sensors.ultrasonicMaxDistance);
+        Academy.Instance.StatsRecorder.Add("Randomization/UltrasonicConeAngle", sensors.ultrasonicConeAngle);
+        Academy.Instance.StatsRecorder.Add("Randomization/IRObstacleDist", sensors.irObstacleDistance);
+        Academy.Instance.StatsRecorder.Add("Randomization/GripperIRDist", sensors.gripperIRDistance);
     }
 
     private void RandomizeStartPose()
@@ -119,6 +169,10 @@ public class DomainRandomizer : MonoBehaviour
 
         robotTransform.position = originalStartPosition + posOffset;
         robotTransform.rotation = originalStartRotation * Quaternion.Euler(0f, angleOffset, 0f);
+    
+        float offsetMagnitude = posOffset.magnitude;
+        Academy.Instance.StatsRecorder.Add("Randomization/StartOffset", offsetMagnitude);
+        Academy.Instance.StatsRecorder.Add("Randomization/StartAngleOffset", angleOffset);
     }
 
     /// <summary>

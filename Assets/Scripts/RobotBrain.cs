@@ -36,19 +36,30 @@ public class RobotBrain : Agent
     [SerializeField] private float ballSpawnMaxDistance = 1.5f;
 
     [Header("Награды")]
-    [SerializeField] private float actionRatePenaltyScale = 0.001f; // штраф за резкое изменение газа/руля (сумма модулей разностей действий)
-    [SerializeField] private float centeringBonusScale    = 0.001f; // бонус за удержание мяча в центре камеры (1 - |угол|)
-    [SerializeField] private float wallProximityPenalty   = 0.02f; // штраф за критическое сближение с боковыми стенами (по УЗ и ИК)
-    [SerializeField] private float successReward          = 5.0f; // терминальная награда за успешный захват мяча
-    [SerializeField] private float idlePenalty             = 0.001f; // штраф за бездействие (накладывается каждый шаг при скорости ниже порога)
-    [SerializeField] private float reversePenalty          = 0.001f; // штраф за движение назад (газ < 0)
-    [SerializeField] private float frontWallPenalty        = 0.01f; // величина штрафа за фронтальное препятствие
-    [SerializeField] private float outOfBoundsPenalty      = -2.0f;
+    private float actionRatePenaltyScale = 0.001f; // штраф за резкое изменение газа/руля (сумма модулей разностей действий)
+    private float centeringBonusScale    = 0.01f; // бонус за удержание мяча в центре камеры (1 - |угол|)
+    private float wallProximityPenalty   = 0.01f; // штраф за критическое сближение с боковыми стенами (по УЗ и ИК)
+    private float successGrabbed         = 5.0f; //  награда за успешный захват мяча
+    private float idlePenalty             = 0.001f; // штраф за бездействие (накладывается каждый шаг при скорости ниже порога)
+    private float reversePenalty          = 0.001f; // штраф за движение назад (газ < 0)
+    private float frontWallPenalty        = 0.02f; // величина штрафа за фронтальное препятствие
+    private float outOfBoundsPenalty      = -2.0f;
 
-    [SerializeField] private float explorationLinearBonus = 0.002f; // для исследования что делать если мяч не виден (за стеной)
+    [Header("Награды за удержание")]
+    [SerializeField] private int requiredHoldSteps = 50; // число шагов удержания (при FixedUpdate 50 Гц это 1 сек)
+    [SerializeField] private float holdSuccessReward = 1.0f; // огромная награда за успешное удержание
+    [SerializeField] private float holdDropPenalty = -1.0f;  // огромный штраф за бросание во время удержания
+    [SerializeField] private float holdStepReward = 0.1f; // бонус за каждый кадр удержания мяча
+    private bool isHoldingBall;       // true, если сейчас идёт отсчёт удержания
+    private int  holdStepCounter;     // сколько шагов мяч удерживается непрерывно
+
+    [SerializeField] private float wrongTurnPenalty = 0.02f;   // штраф за поворот от мяча
+    [SerializeField] private float explorationLinearBonus = 0.002f;
     [SerializeField] private float explorationAngularPenalty = 0.001f;
+    private float previousBallAngle = 0f;
+    private bool ballAngleInitialized = false;
 
-    [SerializeField] private float approachRewardScale    = 10f; // масштаб награды за приближение к мячу (множитель к delta distance)
+    [SerializeField] private float approachRewardScale    = 5f; // масштаб награды за приближение к мячу (множитель к delta distance)
     [SerializeField] private float idleSpeedThreshold      = 0.05f; // порог скорости (м/с), ниже которого робот считается бездействующим
     [SerializeField] private float approachDecayRate       = 4f; // коэффициент экспоненциального затухания – чем больше, тем сильнее гасится скорость вблизи мяча
     [SerializeField] private float wallCriticalUsThreshold = 0.15f; // порог нормализованного УЗ-сигнала, ниже которого стена считается опасной
@@ -126,6 +137,12 @@ public class RobotBrain : Agent
     private void Awake()
     {
         EnsureInitialized();
+
+        if (randomizer != null)
+        {
+            // Если мы в Inference-режиме, эпизоды не перезапускаются, поэтому применяем рандомизацию один раз при старте сцены.
+            randomizer.Apply();
+        }
     }
 
     public override void Initialize()
@@ -160,6 +177,8 @@ public class RobotBrain : Agent
             timeSinceLastBallSeen += Time.fixedDeltaTime;
         }
         hasBall = gripper != null && gripper.IsHolding;
+
+        CheckHoldStatus();
 
         // Пересчитываем все 15 наблюдений
         ComputeObservations();
@@ -212,6 +231,12 @@ public class RobotBrain : Agent
                 ballRb.linearVelocity = Vector3.zero; 
                 ballRb.angularVelocity = Vector3.zero; 
             }
+
+            previousBallAngle = 0f;
+            ballAngleInitialized = false;
+
+            isHoldingBall = false;
+            holdStepCounter = 0;
         }
 
         lastKnownBallAngle = 0f;
@@ -324,8 +349,6 @@ public class RobotBrain : Agent
                 gripper.GripCommand();
             else if (actGripCmd == 2)
                 gripper.ReleaseCommand();
-            else
-                gripper.isClawClosed = false;
         }
 
         // Состояние (lastKnownBallAngle, timeSinceLastBallSeen, hasBall) и
@@ -350,6 +373,42 @@ public class RobotBrain : Agent
                 EndEpisode();
                 return; // предотвращаем дальнейшее выполнение метода
             }
+        }
+    }
+
+    private void CheckHoldStatus()
+    {
+        bool currentlyHolding = hasBall;
+
+        if (currentlyHolding)
+        {
+            // Награда за сам факт удержания в этом кадре
+            AddReward(holdStepReward);
+
+            if (!isHoldingBall)
+            {
+                // Только что схватили – начинаем отсчёт
+                AddReward(successGrabbed);
+                isHoldingBall = true;
+                holdStepCounter = 0;
+            }
+            else
+            {
+                holdStepCounter++;
+                if (holdStepCounter >= requiredHoldSteps)
+                {
+                    // Удержали достаточно долго – большая награда и конец эпизода
+                    AddReward(holdSuccessReward);
+                    Academy.Instance.StatsRecorder.Add("Custom/BallPickups", 1f, StatAggregationMethod.Sum);
+                    EndEpisode();
+                }
+            }
+        }
+        else if (isHoldingBall)
+        {
+            // Бросили мяч во время удержания – штраф и конец эпизода
+            AddReward(holdDropPenalty);
+            EndEpisode();
         }
     }
 
@@ -396,8 +455,41 @@ public class RobotBrain : Agent
         if (gas < 0f)
             AddReward(-reversePenalty);
 
-        if (yoloCamera != null && yoloCamera.IsVisible && delta > 0f)
-            AddReward((1f - Mathf.Abs(yoloCamera.RelativeAngle)) * centeringBonusScale);
+        if (ballVisible)
+        {
+            float currentAngle = yoloCamera.RelativeAngle;
+
+            // Бонус за центрирование при приближении
+            if (delta > 0f)
+                AddReward((1f - Mathf.Abs(currentAngle)) * centeringBonusScale);
+
+            // Штраф за поворот от мяча (угол растёт по модулю)
+            if (ballAngleInitialized && Mathf.Abs(currentAngle) > Mathf.Abs(previousBallAngle) + 0.01f)
+            {
+                AddReward(-wrongTurnPenalty);
+            }
+
+            previousBallAngle = currentAngle;
+            ballAngleInitialized = true;
+        }
+        else
+        {
+            // Если мяч не виден, сбрасываем флаг, чтобы при следующем обнаружении не было ложного штрафа
+            ballAngleInitialized = false;
+        }
+
+        if (yoloCamera != null && yoloCamera.IsVisible)
+        {
+            float currentAngle = yoloCamera.RelativeAngle;                     // текущий угол
+            float previousAngle = (prevDistanceToBall == float.MaxValue) ? 0f : lastKnownBallAngle; // можно хранить отдельно
+
+            // Угол, который был на предыдущем шаге (нужно сохранять). Добавим поле private float previousBallAngle;
+            if (Mathf.Abs(currentAngle) > Mathf.Abs(previousAngle) + 0.01f)  // поворачиваем от мяча
+            {
+                AddReward(-wrongTurnPenalty);
+            }
+            previousAngle = currentAngle;
+        }
 
         if (currentDistance > closeApproachDistance && o01_ultrasonic < frontWallThreshold)
             AddReward(-frontWallPenalty);
@@ -407,14 +499,6 @@ public class RobotBrain : Agent
             float minUs = Mathf.Min(sensors.UltrasonicLeft, sensors.UltrasonicRight);
             if (minUs < wallCriticalUsThreshold) AddReward(-wallProximityPenalty);
             if (sensors.LeftIR == 1 || sensors.RightIR == 1) AddReward(-wallProximityPenalty);
-        }
-
-        if (hasBall)
-        {
-            AddReward(successReward);
-            Academy.Instance.StatsRecorder.Add("Custom/BallPickups", 1f, StatAggregationMethod.Sum);
-            EndEpisode();
-            return;
         }
 
         Vector3 pos = transform.position;

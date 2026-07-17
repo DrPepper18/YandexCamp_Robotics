@@ -59,8 +59,8 @@ public class TrackController : MonoBehaviour
         // Настройки стабильности физики
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
-        rb.linearDamping = 8f;   // в Unity < 6 называется rb.drag
-        rb.angularDamping = 10f; // в Unity < 6 называется rb.angularDrag
+        if (rb.linearDamping == 0f) rb.linearDamping = 8f;
+        if (rb.angularDamping == 0f) rb.angularDamping = 10f;
     }
 
     private void Update()
