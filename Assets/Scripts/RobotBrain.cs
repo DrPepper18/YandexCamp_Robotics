@@ -42,30 +42,30 @@ public class RobotBrain : Agent
     private float successReward          = 10.0f; // терминальная награда за успешный захват мяча
     private float idlePenalty             = 0.001f; // штраф за бездействие (накладывается каждый шаг при скорости ниже порога)
     private float reversePenalty          = 0.001f; // штраф за движение назад (газ < 0)
-    private float frontWallPenalty        = 0.02f; // величина штрафа за фронтальное препятствие
+    private float frontWallPenalty        = 0.01f; // величина штрафа за фронтальное препятствие
     private float outOfBoundsPenalty      = -2.0f;
 
     [Header("Награды за удержание")]
-    [SerializeField] private int requiredHoldSteps = 50; // число шагов удержания (при FixedUpdate 50 Гц это 1 сек)
-    [SerializeField] private float holdSuccessReward = 2.0f; // огромная награда за успешное удержание
-    [SerializeField] private float holdDropPenalty = -1.0f;  // огромный штраф за бросание во время удержания
-    [SerializeField] private float holdStepReward = 0.1f; // бонус за каждый кадр удержания мяча
+    private int requiredHoldSteps = 50; // число шагов удержания (при FixedUpdate 50 Гц это 1 сек)
+    private float holdSuccessReward = 2.0f; // огромная награда за успешное удержание
+    private float holdDropPenalty = -1.0f;  // огромный штраф за бросание во время удержания
+    private float holdStepReward = 0.1f; // бонус за каждый кадр удержания мяча
     private bool isHoldingBall;       // true, если сейчас идёт отсчёт удержания
     private int  holdStepCounter;     // сколько шагов мяч удерживается непрерывно
 
-    [SerializeField] private float wrongTurnPenalty = 0.02f;   // штраф за поворот от мяча
-    [SerializeField] private float explorationLinearBonus = 0.002f;
-    [SerializeField] private float explorationAngularPenalty = 0.001f;
+    private float wrongTurnPenalty = 0.02f;   // штраф за поворот от мяча
+    private float explorationLinearBonus = 0.002f;
+    private float explorationAngularPenalty = 0.001f;
     private float previousBallAngle = 0f;
     private float smoothedBallAngle = 0f;   // сглаженный угол для детекции поворота от мяча
     private bool ballAngleInitialized = false;
 
-    [SerializeField] private float approachRewardScale    = 5f; // масштаб награды за приближение к мячу (множитель к delta distance)
-    [SerializeField] private float idleSpeedThreshold      = 0.05f; // порог скорости (м/с), ниже которого робот считается бездействующим
-    [SerializeField] private float approachDecayRate       = 4f; // коэффициент экспоненциального затухания – чем больше, тем сильнее гасится скорость вблизи мяча
-    [SerializeField] private float wallCriticalUsThreshold = 0.15f; // порог нормализованного УЗ-сигнала, ниже которого стена считается опасной
-    [SerializeField] private float frontWallThreshold      = 0.3f; // порог нормализованного УЗ-сигнала спереди, при котором накладывается штраф за препятствие впереди
-    [SerializeField] private float closeApproachDistance   = 0.3f; // расстояние, на котором включается экспоненциальное затухание награды за приближение
+    private float approachRewardScale    = 5f; // масштаб награды за приближение к мячу (множитель к delta distance)
+    private float minUltrasonicPossible = 0.17f; // минимальное показание УЗ, когда робот упирается в стену
+    private float idleSpeedThreshold      = 0.05f; // порог скорости (м/с), ниже которого робот считается бездействующим
+    private float approachDecayRate       = 4f; // коэффициент экспоненциального затухания – чем больше, тем сильнее гасится скорость вблизи мяча
+    private float wallCriticalUsThreshold = 0.15f; // порог нормализованного УЗ-сигнала, ниже которого стена считается опасной
+    private float closeApproachDistance   = 0.3f; // расстояние, на котором включается экспоненциальное затухание награды за приближение
 
     [Tooltip("Собственный лимит шагов эпизода (не зависит от Agent.MaxStep). 0 = без лимита.")]
     [SerializeField] private int customMaxSteps = 3000;
@@ -484,8 +484,15 @@ public class RobotBrain : Agent
             ballAngleInitialized = false;
         }
 
-        if (currentDistance > closeApproachDistance && o01_ultrasonic < frontWallThreshold)
-            AddReward(-frontWallPenalty);
+        if (currentDistance > closeApproachDistance)
+        {
+            // Нормализуем: 0 = минимальное расстояние (робот вплотную), 1 = чисто
+            float t = Mathf.InverseLerp(minUltrasonicPossible, 1.0f, o01_ultrasonic);
+            // t = 0 -> штраф = frontWallPenalty, t = 1 -> штраф ≈ 0
+            float penalty = frontWallPenalty * Mathf.Pow(1.0f - t, 2.0f);
+            // или более плавно: frontWallPenalty * (1 - t)^степень
+            AddReward(-penalty);
+        }
 
         if (sensors != null)
         {
