@@ -5,17 +5,19 @@ using Unity.MLAgents.Sensors;
 
 /// <summary>
 /// Interceptor GFS-X AI agent. Glues the team scripts (TrackController,
-/// VirtualSensors, SimulatedYoloCamera, GripperController) into one "brain":
-///   - collects 15 observations (order strictly matches the Practice 3 table),
-///   - dispatches 3 continuous + 1 discrete action,
-///   - computes bounded rewards,
+/// VirtualSensors, SimulatedYoloCamera) into one "brain":
+///   - collects 11 observations (order strictly matches the Practice 3 table,
+///     minus odometry/heading/speed - the real GFS-X has none of those sensors),
+///   - dispatches 3 continuous actions (no discrete action - the claw is autonomous,
+///     driven directly by the GripperIR sensor, matching real hardware exactly),
+///   - computes bounded rewards (all fixed amounts, no multipliers/percentages),
 ///   - exposes the public fields that BrainDebugHUD reads.
 /// Inherits Agent (ML-Agents). Attach to the "robot" object.
 ///
 /// Behavior Parameters on the robot MUST match:
 ///   Behavior Name = GFSX_Brain (same as config.yaml)
-///   Vector Observation -> Space Size = 15, Stacked Vectors = 4
-///   Continuous Actions = 3, Discrete Branches = 1, Branch 0 Size = 3
+///   Vector Observation -> Space Size = 11, Stacked Vectors = 4
+///   Continuous Actions = 3, Discrete Branches = 0
 /// Leave the inspector "Max Step" = 0; this script caps the episode itself.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
@@ -27,7 +29,6 @@ public class RobotBrain : Agent
     [SerializeField] private SimulatedYoloCamera yolo;
     [Tooltip("Practice 7 (HIL): optional real-YOLO receiver. When assigned AND its useYOLO is ON, vision comes from the real robot instead of the simulated camera")]
     [SerializeField] private RealVision realVision;
-    [SerializeField] private GripperController gripper;
 
     [Header("Domain Randomization (optional)")]
     [Tooltip("Optional DomainRandomizer component. Leave empty to train on a clean environment")]
@@ -68,37 +69,54 @@ public class RobotBrain : Agent
     [Tooltip("MISSION MODE (Practice 7): for inference demos with the state machine. Disables all teleports/EndEpisode - the FSM owns the mission cycle. MUST be OFF for training!")]
     [SerializeField] private bool missionMode = false;
 
-    [Header("Rewards")]
-    [Tooltip("Reward per step for driving forward, independent of the ball - keeps a positive " +
-             "signal alive while exploring blind (ball not yet found / out of view)")]
-    [SerializeField] private float forwardReward = 0.01f;
-    [SerializeField] private float approachReward = 2.0f;   // per meter of approach
-    [SerializeField] private float approachDeltaClamp = 0.15f; // max |dist change| counted per step
-    [SerializeField] private float nearBoost = 2.0f;        // multiplier when close to ball
-    [SerializeField] private float centerReward = 0.003f;   // for centering camera/body on ball
-    [SerializeField] private float actionRatePenalty = 0.005f;
-    [Tooltip("Penalty each time the gripper COMMAND changes (0/1/2). Stops the policy from chattering the claw servo, which wears the real hardware")]
-    [SerializeField] private float gripChatterPenalty = 0.01f;
-    [SerializeField] private float wallPenalty = 0.02f;
-    [SerializeField] private float stepPenalty = 0.0005f;
-    [SerializeField] private float reversePenalty = 0.004f; // penalty per step for driving backwards
-    [Tooltip("Distance (m) under which the robot is rewarded for slowing down before the grab")]
-    [SerializeField] private float slowdownRadius = 0.4f;
-    [SerializeField] private float slowdownReward = 0.004f; // reward for being slow when near the ball
-    [SerializeField] private float grabReward = 5.0f;
-    [Tooltip("How many agent decisions the robot must HOLD the ball, standing still, before the episode ends with success. 20 decisions = ~2 s at Decision Period 5 / 50 Hz physics (matches the real gripper closing time)")]
-    [SerializeField] private int holdDecisions = 20;
-    [Tooltip("Small reward per decision while holding (keeps the value signal alive during the forced stop)")]
-    [SerializeField] private float holdReward = 0.02f;
+    [Header("Rewards (all fixed amounts - no multipliers/percentages anywhere)")]
+    [Tooltip("Flat penalty per step while standing still (|gas| ~ 0). Moving forward alone gives nothing (0).")]
+    [SerializeField] private float standingStillPenalty = 0.001f;
+    [Tooltip("Flat reward per step for closing distance on a VISIBLE ball")]
+    [SerializeField] private float towardBallReward = 0.003f;
+    [Tooltip("Scale for centeringRewardScale * (1-|ServoAngle|) * (1-|BallAngle|), only while the ball is visible")]
+    [SerializeField] private float centeringRewardScale = 0.001f;
+    [Tooltip("Flat penalty per step for driving backwards while the ball IS visible")]
+    [SerializeField] private float backwardVisiblePenalty = 0.001f;
+    [Tooltip("Flat penalty per step for driving backwards while the ball is NOT visible")]
+    [SerializeField] private float backwardBlindPenalty = 0.0001f;
+    [Tooltip("Flat penalty for reversing gas/steer/camera direction (not just a large step - see suddenMoveSignificance)")]
+    [SerializeField] private float suddenMovePenalty = 0.001f;
+    [Tooltip("Minimum |value| for gas/steer/camCmd to count as a deliberate direction. Kept low so the SMOOTHED steer/gas (Input.GetAxis, or a smooth policy) still registers - a high threshold widens the near-zero dead band the ramp must cross, which the oscillation window then can't span")]
+    [SerializeField] private float suddenMoveSignificance = 0.2f;
+    [Tooltip("A direction reversal only counts as 'sudden' if the opposite significant reading appears within this many decisions of the last one. Must exceed how long a smoothed steer/gas takes to ramp across the dead band (else motor reversals never register), yet stay well under the straight-driving gap between two genuinely separate turns")]
+    [SerializeField] private int oscillationWindowDecisions = 12;
+    [Tooltip("Flat penalty when left/right IR is active (wall close on that side)")]
+    [SerializeField] private float sideIRCriticalPenalty = 50f;
+    [Tooltip("Flat penalty when the front ultrasonic reads under ultrasonicCriticalThreshold")]
+    [SerializeField] private float ultrasonicCriticalPenalty = 50f;
+    [SerializeField] private float ultrasonicCriticalThreshold = 0.2f;
     [SerializeField] private float fallPenalty = 3.0f;
-    [Tooltip("Penalty each time the hull/bumper physically hits the ball (teaches gentle approach with the gripper, not ramming)")]
-    [SerializeField] private float ballBumpPenalty = 0.05f;
+
+    [Header("Claw hold / success (based on the raw GripperIR sensor - matches real hardware, not a physics-only 'IsHolding' state)")]
+    [Tooltip("Decisions per reward tick. 5 decisions = 0.5 s at Decision Period 5 / 50 Hz physics")]
+    [SerializeField] private int gripRewardIntervalDecisions = 5;
+    [Tooltip("Decisions to hold before success (episode ends). 20 decisions = ~2 s at Decision Period 5 / 50 Hz physics (matches the real gripper closing time)")]
+    [SerializeField] private int gripHoldMaxDecisions = 20;
+    [Tooltip("Flat reward granted every gripRewardIntervalDecisions while the claw IR sensor stays continuously active")]
+    [SerializeField] private float gripHoldTickBonus = 50f;
+    [Tooltip("Flat penalty when the claw IR sensor was active and then deactivates before reaching gripHoldMaxDecisions (ball touched the claw and was lost)")]
+    [SerializeField] private float gripLostPenalty = 50f;
+
+    [Header("Debug - live reward breakdown (read-only, updates every step in Play mode)")]
+    [SerializeField] private float dbg_StandingStillApplied;
+    [SerializeField] private float dbg_TowardBallApplied;
+    [SerializeField] private float dbg_CenteringApplied;
+    [SerializeField] private float dbg_BackwardApplied;
+    [SerializeField] private float dbg_SideIRCriticalApplied;
+    [SerializeField] private float dbg_UltrasonicCriticalApplied;
+    [SerializeField] private float dbg_SuddenMoveApplied;
+    [SerializeField] private float dbg_GripHoldBonusApplied;
+    [SerializeField] private float dbg_GripLostApplied;
+    [SerializeField] private float dbg_FallPenaltyApplied;
 
     [Header("Observation normalization")]
-    [SerializeField] private float maxSpeed = 0.8f;         // m/s of the real GFS-X
     [SerializeField] private float timeSinceBallCap = 10f;  // s
-    [Tooltip("Real GFS-X has no wheel encoders, so dX/dZ odometry (obs 11-12) does not exist on hardware. ON = feed zeros instead (train the policy to live without odometry before Sim2Real)")]
-    [SerializeField] private bool zeroOdometry = false;
 
     // ---- Rigidbody / start poses ----
     private Rigidbody rb;
@@ -112,10 +130,16 @@ public class RobotBrain : Agent
     private float lastKnownBallAngle;
     private float timeSinceBall;
     private float prevWorldDistance;
-    private float prevGas, prevSteer;
-    private int prevGrip;
+    // Last SIGNIFICANT (|value| > suddenMoveSignificance) direction seen for each channel
+    // (-1, +1, or 0 = none recorded yet), and how many decisions ago that was. A reversal
+    // only counts as "sudden" if the opposite significant direction reappears within
+    // oscillationWindowDecisions - otherwise it's a normal, well-separated turn (e.g. went
+    // right a while ago, now going left to navigate), not left-right-left-right jitter.
+    private float lastSigGas, lastSigSteer, lastSigCam;
+    private int gasSigAge = 999999, steerSigAge = 999999, camSigAge = 999999;
     private int episodeSteps;
-    private int holdCounter;
+    private int gripHoldDecisions;
+    private int gripRewardTicksGranted;
 
     /// <summary>True when connected to the Python trainer (used later for domain randomization / ROSBridge gating).</summary>
     public bool IsTraining => Academy.Instance.IsCommunicatorOn;
@@ -131,16 +155,11 @@ public class RobotBrain : Agent
     public float Obs08_BallVisible       { get; private set; }
     public float Obs09_ServoAngleNorm    { get; private set; }
     public float Obs10_HasBall           { get; private set; }
-    public float Obs11_DxNorm            { get; private set; }
-    public float Obs12_DzNorm            { get; private set; }
-    public float Obs13_HeadingNorm       { get; private set; }
-    public float Obs14_Speed             { get; private set; }
-    public float Obs15_TimeSinceBallNorm { get; private set; }
+    public float Obs11_TimeSinceBallNorm { get; private set; }
 
     public float ActGas       { get; private set; }
     public float ActSteer     { get; private set; }
     public float ActCameraCmd { get; private set; }
-    public int   ActGripCmd   { get; private set; }
 
     public float StepReward       { get; private set; }
     public float CumulativeReward => GetCumulativeReward();
@@ -175,14 +194,13 @@ public class RobotBrain : Agent
         {
             lastKnownBallAngle = 0f;
             timeSinceBall = timeSinceBallCap;
-            prevGas = prevSteer = 0f;
-            holdCounter = 0;
+            lastSigGas = lastSigSteer = lastSigCam = 0f;
+            gasSigAge = steerSigAge = camSigAge = 999999;
+            gripHoldDecisions = 0;
+            gripRewardTicksGranted = 0;
             prevWorldDistance = FlatDistanceToBall();
             return;
         }
-
-        // If we were holding something, release it (restores ball physics and parent)
-        if (gripper != null && gripper.IsHolding) gripper.ReleaseCommand();
 
         // Competition rule: scatter the obstacle belt BEFORE spawning the ball,
         // so the ball's overlap check sees the new obstacle positions
@@ -250,9 +268,10 @@ public class RobotBrain : Agent
         // Reset internal state
         lastKnownBallAngle = 0f;
         timeSinceBall = timeSinceBallCap;
-        prevGas = prevSteer = 0f;
-        prevGrip = 0;
-        holdCounter = 0;
+        lastSigGas = lastSigSteer = lastSigCam = 0f;
+        gasSigAge = steerSigAge = camSigAge = 999999;
+        gripHoldDecisions = 0;
+        gripRewardTicksGranted = 0;
         prevWorldDistance = FlatDistanceToBall();
 
         // Domain Randomization (Practice 5): physics + latency queue reset
@@ -293,39 +312,18 @@ public class RobotBrain : Agent
         Obs08_BallVisible  = visible ? 1f : 0f;
         Obs05_BallAngle    = visible ? visAngle : 0f;
         Obs06_BallDistance = visible ? visDist : 1f;
-        if (visible) { lastKnownBallAngle = yolo.RelativeAngle; timeSinceBall = 0f; }
+        if (visible) { lastKnownBallAngle = visAngle; timeSinceBall = 0f; }
         Obs07_LastKnownAngle = lastKnownBallAngle;
 
         // 9. Camera servo
         Obs09_ServoAngleNorm = Mathf.Clamp(servoAngle / maxServoAngle, -1f, 1f);
 
-        // 10. Are we holding the ball
-        Obs10_HasBall = (gripper != null && gripper.IsHolding) ? 1f : 0f;
+        // 10. Has ball: mirrors the raw GripperIR sensor directly (not the physics-only
+        // "IsHolding" state) - the real robot only ever has the raw sensor to go on.
+        Obs10_HasBall = Obs04_GripperIR == 1 ? 1f : 0f;
 
-        // 11-12. Offset from start (odometry). Real GFS-X has no encoders,
-        // so with zeroOdometry ON the policy learns to work without it.
-        if (zeroOdometry)
-        {
-            Obs11_DxNorm = 0f;
-            Obs12_DzNorm = 0f;
-        }
-        else
-        {
-            Vector3 d = transform.position - startPos;
-            Obs11_DxNorm = Mathf.Clamp(d.x / arenaHalf, -1f, 1f);
-            Obs12_DzNorm = Mathf.Clamp(d.z / arenaHalf, -1f, 1f);
-        }
-
-        // 13. Robot heading (-1..1)
-        float heading = transform.eulerAngles.y;
-        if (heading > 180f) heading -= 360f;
-        Obs13_HeadingNorm = heading / 180f;
-
-        // 14. Speed
-        Obs14_Speed = rb != null ? Mathf.Clamp01(rb.linearVelocity.magnitude / maxSpeed) : 0f;
-
-        // 15. Time since last detection
-        Obs15_TimeSinceBallNorm = Mathf.Clamp01(timeSinceBall / timeSinceBallCap);
+        // 11. Time since last detection
+        Obs11_TimeSinceBallNorm = Mathf.Clamp01(timeSinceBall / timeSinceBallCap);
 
         // --- Feed strictly in the Practice 3 table order ---
         sensor.AddObservation(Obs01_Ultrasonic);
@@ -338,11 +336,7 @@ public class RobotBrain : Agent
         sensor.AddObservation(Obs08_BallVisible);
         sensor.AddObservation(Obs09_ServoAngleNorm);
         sensor.AddObservation(Obs10_HasBall);
-        sensor.AddObservation(Obs11_DxNorm);
-        sensor.AddObservation(Obs12_DzNorm);
-        sensor.AddObservation(Obs13_HeadingNorm);
-        sensor.AddObservation(Obs14_Speed);
-        sensor.AddObservation(Obs15_TimeSinceBallNorm);
+        sensor.AddObservation(Obs11_TimeSinceBallNorm);
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -353,32 +347,8 @@ public class RobotBrain : Agent
         float gas    = Mathf.Clamp(actions.ContinuousActions[0], -1f, 1f);
         float steer  = Mathf.Clamp(actions.ContinuousActions[1], -1f, 1f);
         float camCmd = Mathf.Clamp(actions.ContinuousActions[2], -1f, 1f);
-        int   grip   = actions.DiscreteActions[0];   // 0 idle / 1 close / 2 open
 
-        ActGas = gas; ActSteer = steer; ActCameraCmd = camCmd; ActGripCmd = grip;
-
-        // ---- HOLD PHASE: ball is gripped -> stand still and wait for the
-        // (real-world) gripper to fully close before the success is counted.
-        if (gripper != null && gripper.IsHolding)
-        {
-            StepReward = 0f;
-            if (track != null) track.SetCommand(0f, 0f);   // forced stop
-
-            // Mission mode: just hold position; the state machine will disable
-            // this agent and drive the delivery leg itself.
-            if (missionMode) return;
-
-            holdCounter++;
-            Add(holdReward);
-
-            if (holdCounter >= holdDecisions)
-            {
-                Add(grabReward);
-                EndEpisode();
-            }
-            return;                                        // ignore net actions while holding
-        }
-        holdCounter = 0;                                   // lost the ball -> restart the hold
+        ActGas = gas; ActSteer = steer; ActCameraCmd = camCmd;
 
         // Domain Randomization: action latency FIFO (no-op when latency is 0)
         if (randomizer != null) randomizer.DelayActions(ref gas, ref steer, ref camCmd);
@@ -398,84 +368,190 @@ public class RobotBrain : Agent
                         ? cameraServo.parent.InverseTransformDirection(Vector3.up)
                         : Vector3.up);
 
-        // Gripper
-        if (gripper != null)
-        {
-            if (grip == 1) gripper.GripCommand();
-            else if (grip == 2) gripper.ReleaseCommand();
-        }
-
-        ComputeRewards(gas, steer);
-
-        prevGas = gas; prevSteer = steer;
+        ComputeRewards(gas, steer, camCmd);
     }
 
-    private void ComputeRewards(float gas, float steer)
+    private void ComputeRewards(float gas, float steer, float camCmd)
     {
+        dbg_GripHoldBonusApplied = 0f;
+        dbg_GripLostApplied = 0f;
+
+        // ---- Claw hold tracking: purely observational - driving is NEVER frozen while
+        // the sensor is active. Flat, fixed bonus per tick (NOT a % of cumulative reward -
+        // avoids exponential growth and removes any incentive to stall/inflate a baseline
+        // before grabbing, since the bonus no longer depends on prior accumulated reward).
+        bool gripActive = Obs04_GripperIR == 1;
+        if (gripActive)
+        {
+            if (!missionMode)
+            {
+                gripHoldDecisions++;
+                int ticksReached = gripHoldDecisions / gripRewardIntervalDecisions;
+                while (gripRewardTicksGranted < ticksReached)
+                {
+                    gripRewardTicksGranted++;
+                    Add(gripHoldTickBonus);
+                    dbg_GripHoldBonusApplied += gripHoldTickBonus;
+                }
+
+                if (gripHoldDecisions >= gripHoldMaxDecisions)
+                {
+                    EndEpisode();   // success
+                    return;
+                }
+            }
+        }
+        else
+        {
+            // Sensor was active and just dropped before reaching success - the ball
+            // touched the claw and was lost before the hold completed. Flat penalty,
+            // same fixed scale as the hold-tick bonus (not tied to cumulative reward).
+            if (gripHoldDecisions > 0 && !missionMode)
+            {
+                Add(-gripLostPenalty);
+                dbg_GripLostApplied = -gripLostPenalty;
+            }
+            gripHoldDecisions = 0;
+            gripRewardTicksGranted = 0;
+        }
+
         // Real, occlusion-aware visibility - Obs08_BallVisible already went through
         // SimulatedYoloCamera's raycast line-of-sight check (or RealVision on hardware),
-        // so this is "actually seen", not just "somewhere in the FOV cone through a wall".
+        // so this means "actually seen", not just "somewhere in the FOV cone through a wall".
         bool ballVisible = Obs08_BallVisible > 0.5f;
         float dist = ball != null ? FlatDistanceToBall() : float.MaxValue;
 
-        // 0. Baseline reward for driving forward, independent of the ball - so exploring
-        //    while the ball hasn't been spotted yet isn't a dead/punishing zone.
-        if (gas > 0f)
-            Add(forwardReward * gas);
-
-        // 1. Distance Delta: reward for approaching, delta clamped so a ball
-        //    nudge / teleport can never produce a huge single-step spike.
-        //    Ground-truth world distance must never leak into reward while the robot
-        //    can't actually see the ball - otherwise driving away while blind gets
-        //    punished for a change it has no way of perceiving.
+        // Ground-truth world distance must never leak into reward while the robot can't
+        // actually see the ball - otherwise driving blind gets rewarded/punished for a
+        // distance change it has no way of perceiving. Only compared/updated on steps
+        // where the ball is actually visible.
+        bool movingToward = false;
         if (ball != null && ballVisible)
         {
-            float delta = Mathf.Clamp(prevWorldDistance - dist, -approachDeltaClamp, approachDeltaClamp);
-            float boost = dist < 0.5f ? nearBoost : 1f;
-            Add(delta * approachReward * boost);
+            movingToward = dist < prevWorldDistance;
             prevWorldDistance = dist;
         }
 
-        // 2. Look at the ball (correct trajectory): reward for centering it in view.
-        //    Uses the same source as observations (sim camera or RealVision).
-        if (ballVisible)
-            Add(centerReward * (1f - Mathf.Abs(Obs05_BallAngle)));
-
-        // 3. Slow down near the ball: reward being slow when close, so it doesn't
-        //    ram the ball at full speed right before the grab. Same visibility gate.
-        if (ball != null && ballVisible && dist < slowdownRadius)
+        // --- Standing still: flat penalty. Moving forward alone gives nothing (0). ---
+        bool standingStill = Mathf.Abs(gas) <= 0.0001f;
+        if (standingStill)
         {
-            float speedNorm = rb != null ? Mathf.Clamp01(rb.linearVelocity.magnitude / maxSpeed) : 0f;
-            Add(slowdownReward * (1f - speedNorm));
+            Add(-standingStillPenalty);
+            dbg_StandingStillApplied = -standingStillPenalty;
+        }
+        else
+        {
+            dbg_StandingStillApplied = 0f;
         }
 
-        // 4. Action Rate Penalty: discourage jerky motor commands.
-        Add(-actionRatePenalty * (Mathf.Abs(gas - prevGas) + Mathf.Abs(steer - prevSteer)));
-
-        // 4b. Gripper chatter: penalize CHANGING the claw command (not holding it).
-        if (ActGripCmd != prevGrip)
-            Add(-gripChatterPenalty);
-        prevGrip = ActGripCmd;
-
-        // 5. Reverse penalty: small cost for driving backwards without need.
+        // --- Backward: flat penalty, graded by whether the ball is visible right now ---
         if (gas < 0f)
-            Add(reversePenalty * gas); // gas<0 => negative reward, scaled by how hard it reverses
-
-        // 6. Wall Proximity: penalty for getting critically close to walls (US + IR).
-        if (sensors != null)
         {
-            if (sensors.LeftIR == 1 || sensors.RightIR == 1 || sensors.CenterIR == 1)
-                Add(-wallPenalty);
-            if (Mathf.Min(sensors.UltrasonicLeft, sensors.UltrasonicRight) < 0.15f)
-                Add(-wallPenalty);
+            float penalty = ballVisible ? backwardVisiblePenalty : backwardBlindPenalty;
+            Add(-penalty);
+            dbg_BackwardApplied = -penalty;
+        }
+        else
+        {
+            dbg_BackwardApplied = 0f;
         }
 
-        // 7. Small per-step penalty so it doesn't stall.
-        Add(-stepPenalty);
+        // --- Toward ball: flat reward, only counted while the ball is actually visible ---
+        if (movingToward)
+        {
+            Add(towardBallReward);
+            dbg_TowardBallApplied = towardBallReward;
+        }
+        else
+        {
+            dbg_TowardBallApplied = 0f;
+        }
+
+        // --- Centering: flat-scaled formula, only while visible ---
+        if (ballVisible)
+        {
+            float centering = centeringRewardScale * (1f - Mathf.Abs(Obs09_ServoAngleNorm)) * (1f - Mathf.Abs(Obs05_BallAngle));
+            Add(centering);
+            dbg_CenteringApplied = centering;
+        }
+        else
+        {
+            dbg_CenteringApplied = 0f;
+        }
+
+        // --- Critical wall proximity: flat penalties, independent of movement and of each
+        // other (both triggering the same step just adds both penalties, no compounding).
+        if (Obs02_LeftIR == 1 || Obs03_RightIR == 1)
+        {
+            Add(-sideIRCriticalPenalty);
+            dbg_SideIRCriticalApplied = -sideIRCriticalPenalty;
+        }
+        else
+        {
+            dbg_SideIRCriticalApplied = 0f;
+        }
+
+        if (Obs01_Ultrasonic < ultrasonicCriticalThreshold)
+        {
+            Add(-ultrasonicCriticalPenalty);
+            dbg_UltrasonicCriticalApplied = -ultrasonicCriticalPenalty;
+        }
+        else
+        {
+            dbg_UltrasonicCriticalApplied = 0f;
+        }
+
+        // --- Sudden move penalty: covers motors (gas/steer) AND the camera servo command.
+        // Compares against the last SIGNIFICANT direction per channel (|value| >
+        // suddenMoveSignificance), not the immediately preceding step - a raw step-to-step
+        // comparison misses oscillation that ramps gradually through zero (e.g. steer/gas
+        // driven by Input.GetAxis smoothing in Heuristic, or a smooth policy output), since
+        // every individual small step during the ramp has a tiny delta.
+        //
+        // A reversal only counts as "sudden" if the opposite significant direction shows up
+        // within oscillationWindowDecisions of the last one (*Age tracks decisions since the
+        // channel was last significant, of EITHER sign). Otherwise a normal turn taken long
+        // after the previous one (e.g. went right a while ago, now going left to navigate)
+        // would get flagged just for being opposite - it isn't oscillation, just driving.
+        gasSigAge++; steerSigAge++; camSigAge++;
+        bool suddenMove = false;
+
+        if (Mathf.Abs(gas) > suddenMoveSignificance)
+        {
+            float sign = Mathf.Sign(gas);
+            if (lastSigGas != 0f && sign != lastSigGas && gasSigAge <= oscillationWindowDecisions) suddenMove = true;
+            lastSigGas = sign;
+            gasSigAge = 0;
+        }
+        if (Mathf.Abs(steer) > suddenMoveSignificance)
+        {
+            float sign = Mathf.Sign(steer);
+            if (lastSigSteer != 0f && sign != lastSigSteer && steerSigAge <= oscillationWindowDecisions) suddenMove = true;
+            lastSigSteer = sign;
+            steerSigAge = 0;
+        }
+        if (Mathf.Abs(camCmd) > suddenMoveSignificance)
+        {
+            float sign = Mathf.Sign(camCmd);
+            if (lastSigCam != 0f && sign != lastSigCam && camSigAge <= oscillationWindowDecisions) suddenMove = true;
+            lastSigCam = sign;
+            camSigAge = 0;
+        }
+
+        if (suddenMove)
+        {
+            Add(-suddenMovePenalty);
+            dbg_SuddenMoveApplied = -suddenMovePenalty;
+        }
+        else
+        {
+            dbg_SuddenMoveApplied = 0f;
+        }
 
         // --- Terminal conditions ---
-        // (Success is handled by the HOLD phase in OnActionReceived: the robot
-        // must hold the ball for holdDecisions before the episode ends.)
+        // (Success is handled by the claw hold tracking at the top of this method.)
+
+        dbg_FallPenaltyApplied = 0f;
 
         // Mission mode: the FSM owns the mission - never terminate episodes.
         if (missionMode) return;
@@ -489,6 +565,7 @@ public class RobotBrain : Agent
         if (outside)
         {
             Add(-fallPenalty);
+            dbg_FallPenaltyApplied = -fallPenalty;
             EndEpisode();
             return;
         }
@@ -501,14 +578,14 @@ public class RobotBrain : Agent
     public override void Heuristic(in ActionBuffers actionsOut)
     {
         var cont = actionsOut.ContinuousActions;
-        cont[0] = Input.GetAxis("Vertical");     // W/S -> gas
-        cont[1] = Input.GetAxis("Horizontal");   // A/D -> steer
+        // GetAxisRaw (not GetAxis): instant -1/0/+1 with NO smoothing, so manual gas/steer
+        // behave exactly like the camera's GetKey - an abrupt A->D flips sign in one decision
+        // (sudden-move penalty fires), while releasing to neutral for a while before turning
+        // the other way does not. It also matches what a trained policy actually feeds these
+        // actions (raw values that can jump), unlike GetAxis's artificial keyboard ramp.
+        cont[0] = Input.GetAxisRaw("Vertical");     // W/S -> gas
+        cont[1] = Input.GetAxisRaw("Horizontal");   // A/D -> steer
         cont[2] = (Input.GetKey(KeyCode.E) ? 1f : 0f) - (Input.GetKey(KeyCode.Q) ? 1f : 0f); // Q/E -> camera
-
-        var disc = actionsOut.DiscreteActions;
-        if      (Input.GetKey(KeyCode.Space))     disc[0] = 1;  // grip
-        else if (Input.GetKey(KeyCode.LeftShift)) disc[0] = 2;  // release
-        else                                      disc[0] = 0;
     }
 
     // ---- helpers ----
@@ -521,15 +598,4 @@ public class RobotBrain : Agent
     }
 
     private void Add(float r) { AddReward(r); StepReward += r; }
-
-    /// <summary>
-    /// Physical contact between the hull/bumper and the ball. A properly
-    /// gripped ball has its collider disabled, so any collision here means
-    /// the robot rammed the ball with its body instead of using the gripper.
-    /// </summary>
-    private void OnCollisionEnter(Collision collision)
-    {
-        if (collision.collider.CompareTag(ballTag))
-            Add(-ballBumpPenalty);
-    }
 }
