@@ -36,14 +36,14 @@ public class RobotBrain : Agent
     [SerializeField] private float ballSpawnMaxDistance = 1.5f;
 
     [Header("Награды")]
-    [SerializeField] private float actionRatePenaltyScale = 0.001f; // штраф за резкое изменение газа/руля (сумма модулей разностей действий)
-    [SerializeField] private float centeringBonusScale    = 0.01f; // бонус за удержание мяча в центре камеры (1 - |угол|)
-    [SerializeField] private float wallProximityPenalty   = 0.02f; // штраф за критическое сближение с боковыми стенами (по УЗ и ИК)
-    [SerializeField] private float successReward          = 5.0f; // терминальная награда за успешный захват мяча
-    [SerializeField] private float idlePenalty             = 0.001f; // штраф за бездействие (накладывается каждый шаг при скорости ниже порога)
-    [SerializeField] private float reversePenalty          = 0.001f; // штраф за движение назад (газ < 0)
-    [SerializeField] private float frontWallPenalty        = 0.02f; // величина штрафа за фронтальное препятствие
-    [SerializeField] private float outOfBoundsPenalty      = -2.0f;
+    private float actionRatePenaltyScale = 0.001f; // штраф за резкое изменение газа/руля (сумма модулей разностей действий)
+    private float centeringBonusScale    = 0.01f; // бонус за удержание мяча в центре камеры (1 - |угол|)
+    private float wallProximityPenalty   = 0.02f; // штраф за критическое сближение с боковыми стенами (по УЗ и ИК)
+    private float successReward          = 5.0f; // терминальная награда за успешный захват мяча
+    private float idlePenalty             = 0.001f; // штраф за бездействие (накладывается каждый шаг при скорости ниже порога)
+    private float reversePenalty          = 0.001f; // штраф за движение назад (газ < 0)
+    private float frontWallPenalty        = 0.02f; // величина штрафа за фронтальное препятствие
+    private float outOfBoundsPenalty      = -2.0f;
 
     [Header("Награды за удержание")]
     [SerializeField] private int requiredHoldSteps = 50; // число шагов удержания (при FixedUpdate 50 Гц это 1 сек)
@@ -57,6 +57,7 @@ public class RobotBrain : Agent
     [SerializeField] private float explorationLinearBonus = 0.002f;
     [SerializeField] private float explorationAngularPenalty = 0.001f;
     private float previousBallAngle = 0f;
+    private float smoothedBallAngle = 0f;   // сглаженный угол для детекции поворота от мяча
     private bool ballAngleInitialized = false;
 
     [SerializeField] private float approachRewardScale    = 5f; // масштаб награды за приближение к мячу (множитель к delta distance)
@@ -233,6 +234,7 @@ public class RobotBrain : Agent
             }
 
             previousBallAngle = 0f;
+            smoothedBallAngle = 0f;
             ballAngleInitialized = false;
 
             isHoldingBall = false;
@@ -388,6 +390,7 @@ public class RobotBrain : Agent
         if (!isHoldingBall)
         {
             // Только что схватили – начинаем отсчёт
+            AddReward(successReward);
             isHoldingBall = true;
             holdStepCounter = 0;
         }
@@ -457,37 +460,28 @@ public class RobotBrain : Agent
         if (ballVisible)
         {
             float currentAngle = yoloCamera.RelativeAngle;
+            float previousSmoothed = smoothedBallAngle;
+
+            // Экспоненциальное сглаживание (коэффициент 0.2 — чем меньше, тем сильнее фильтр)
+            smoothedBallAngle = Mathf.Lerp(smoothedBallAngle, currentAngle, 0.2f);
 
             // Бонус за центрирование при приближении
             if (delta > 0f)
                 AddReward((1f - Mathf.Abs(currentAngle)) * centeringBonusScale);
 
-            // Штраф за поворот от мяча (угол растёт по модулю)
-            if (ballAngleInitialized && Mathf.Abs(currentAngle) > Mathf.Abs(previousBallAngle) + 0.01f)
+            // Штраф за поворот от мяча – используем сглаженный угол, чтобы избежать ложных срабатываний от шума
+            if (ballAngleInitialized && Mathf.Abs(smoothedBallAngle) > Mathf.Abs(previousSmoothed) + 0.01f)
             {
                 AddReward(-wrongTurnPenalty);
             }
 
-            previousBallAngle = currentAngle;
+            previousBallAngle = currentAngle;   // оставляем для обратной совместимости, если нужно
             ballAngleInitialized = true;
         }
         else
         {
             // Если мяч не виден, сбрасываем флаг, чтобы при следующем обнаружении не было ложного штрафа
             ballAngleInitialized = false;
-        }
-
-        if (yoloCamera != null && yoloCamera.IsVisible)
-        {
-            float currentAngle = yoloCamera.RelativeAngle;                     // текущий угол
-            float previousAngle = (prevDistanceToBall == float.MaxValue) ? 0f : lastKnownBallAngle; // можно хранить отдельно
-
-            // Угол, который был на предыдущем шаге (нужно сохранять). Добавим поле private float previousBallAngle;
-            if (Mathf.Abs(currentAngle) > Mathf.Abs(previousAngle) + 0.01f)  // поворачиваем от мяча
-            {
-                AddReward(-wrongTurnPenalty);
-            }
-            previousAngle = currentAngle;
         }
 
         if (currentDistance > closeApproachDistance && o01_ultrasonic < frontWallThreshold)
