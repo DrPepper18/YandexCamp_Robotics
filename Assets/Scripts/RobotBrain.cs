@@ -47,19 +47,17 @@ public class RobotBrain : Agent
     [SerializeField] private string ballTag = "TargetBall";
     [Tooltip("Optional arena center. If empty, world origin (0,0,0) is used")]
     [SerializeField] private Transform arenaCenter;
-    [Tooltip("Half-size of the arena in X/Z, meters (4x4 arena => 2.0). Used for the out-of-bounds check")]
-    [SerializeField] private float arenaHalf = 2.0f;
 
     [Header("Ball spawn zone (competition layout)")]
-    [Tooltip("Ball spawns in a band AHEAD of the robot's start direction: from minForward to maxForward meters in front of the robot's spawn point")]
+    [Tooltip("If assigned (needs a Collider, e.g. the 'Finish' marker), the ball spawns at a random point inside its bounds instead of the forward/side band below")]
+    [SerializeField] private Transform finishArea;
+    [Tooltip("Ball spawns in a band AHEAD of the robot's start direction: from minForward to maxForward meters in front of the robot's spawn point (used only when finishArea is empty)")]
     [SerializeField] private float ballMinForward = 2.0f;
     [SerializeField] private float ballMaxForward = 3.2f;
     [Tooltip("Half-width of the ball spawn band sideways from the robot's start axis")]
     [SerializeField] private float ballHalfWidth = 1.5f;
     [Tooltip("Randomize the robot's start position sideways by +- this many meters along its spawn side")]
     [SerializeField] private float robotSpawnJitter = 0.5f;
-    [Tooltip("How far below the arena center Y counts as 'fell through the floor'")]
-    [SerializeField] private float fallDrop = 0.5f;
     [Tooltip("Robot start pose. If empty, the scene-start pose is used")]
     [SerializeField] private Transform spawnPoint;
 
@@ -91,7 +89,6 @@ public class RobotBrain : Agent
     [Tooltip("Flat penalty when the front ultrasonic reads under ultrasonicCriticalThreshold")]
     [SerializeField] private float ultrasonicCriticalPenalty = 50f;
     [SerializeField] private float ultrasonicCriticalThreshold = 0.2f;
-    [SerializeField] private float fallPenalty = 3.0f;
 
     [Header("Claw hold / success (based on the raw GripperIR sensor - matches real hardware, not a physics-only 'IsHolding' state)")]
     [Tooltip("Decisions per reward tick. 5 decisions = 0.5 s at Decision Period 5 / 50 Hz physics")]
@@ -113,7 +110,6 @@ public class RobotBrain : Agent
     [SerializeField] private float dbg_SuddenMoveApplied;
     [SerializeField] private float dbg_GripHoldBonusApplied;
     [SerializeField] private float dbg_GripLostApplied;
-    [SerializeField] private float dbg_FallPenaltyApplied;
 
     [Header("Observation normalization")]
     [SerializeField] private float timeSinceBallCap = 10f;  // s
@@ -221,36 +217,44 @@ public class RobotBrain : Agent
         servoAngle = 0f;
         if (cameraServo != null) cameraServo.localRotation = cameraServoBase;
 
-        // Ball spawns in the FAR band AHEAD of the robot's start direction
-        // (competition layout: robot starts on one side facing in, ball lands
-        // randomly in the opposite half, behind the obstacle belt)
+        // Ball spawn: random point inside finishArea's bounds if assigned, otherwise the
+        // old forward/side band ahead of the robot's start direction (competition layout).
         if (ball != null)
         {
             Vector3 fwd  = startRot * Vector3.forward;
             Vector3 side = startRot * Vector3.right;
-            Vector3 c = ArenaCenter;
-            float lim = arenaHalf - 0.25f;   // keep the ball inside the walls
             float ballR = ball.localScale.x * 0.5f + 0.02f;
+
+            Collider finishCollider = finishArea != null ? finishArea.GetComponent<Collider>() : null;
+
             Vector3 p = ball.position; int guard = 0;
             bool ok = false;
             while (!ok && guard < 40)
             {
                 guard++;
-                p = startPos
-                  + fwd  * Random.Range(ballMinForward, ballMaxForward)
-                  + side * Random.Range(-ballHalfWidth, ballHalfWidth);
-                p.y = ballStartY;
 
-                // clamp inside the arena bounds
-                p.x = Mathf.Clamp(p.x, c.x - lim, c.x + lim);
-                p.z = Mathf.Clamp(p.z, c.z - lim, c.z + lim);
+                if (finishCollider != null)
+                {
+                    Bounds fb = finishCollider.bounds;
+                    p = new Vector3(Random.Range(fb.min.x, fb.max.x), ballStartY, Random.Range(fb.min.z, fb.max.z));
+                }
+                else
+                {
+                    p = startPos
+                      + fwd  * Random.Range(ballMinForward, ballMaxForward)
+                      + side * Random.Range(-ballHalfWidth, ballHalfWidth);
+                    p.y = ballStartY;
+                    // No arena-bounds clamp here anymore - physical walls contain the
+                    // arena, so an artificial software boundary is redundant.
+                }
 
-                // not inside anything solid: allow only the floor (arenaCenter)
-                // and the ball itself
+                // not inside anything solid: allow only the floor (arenaCenter), the
+                // finish marker itself, and the ball itself
                 ok = true;
                 foreach (var col in Physics.OverlapSphere(p, ballR))
                 {
                     if (ball != null && col.transform == ball) continue;              // the ball itself
+                    if (finishCollider != null && col == finishCollider) continue;    // the finish floor marker
                     if (arenaCenter != null &&
                         (col.transform == arenaCenter || col.transform.IsChildOf(arenaCenter)))
                         continue;                                                     // the floor
@@ -549,9 +553,8 @@ public class RobotBrain : Agent
         }
 
         // --- Terminal conditions ---
-        // (Success is handled by the claw hold tracking at the top of this method.)
-
-        dbg_FallPenaltyApplied = 0f;
+        // (Success is handled by the claw hold tracking at the top of this method.
+        // No out-of-bounds check here - the arena is physically walled in.)
 
         // Mission mode: the FSM owns the mission - never terminate episodes.
         if (missionMode) return;

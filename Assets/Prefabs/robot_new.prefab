@@ -667,27 +667,25 @@ MonoBehaviour:
   ball: {fileID: 0}
   ballTag: TargetBall
   arenaCenter: {fileID: 0}
-  arenaHalf: 3.5
+  finishArea: {fileID: 0}
   ballMinForward: 2
-  ballMaxForward: 3.2
+  ballMaxForward: 4.2
   ballHalfWidth: 1.5
   robotSpawnJitter: 0.5
-  fallDrop: 0.5
   spawnPoint: {fileID: 0}
   maxEpisodeSteps: 4000
   missionMode: 0
   standingStillPenalty: 0.001
   towardBallReward: 0.03
-  centeringRewardScale: 0.01
+  centeringRewardScale: 0.03
   backwardVisiblePenalty: 0.001
   backwardBlindPenalty: 0.001
-  suddenMovePenalty: 0.1
+  suddenMovePenalty: 0.3
   suddenMoveSignificance: 0.2
   oscillationWindowDecisions: 12
   sideIRCriticalPenalty: 0.1
   ultrasonicCriticalPenalty: 0.1
   ultrasonicCriticalThreshold: 0.2
-  fallPenalty: 3
   gripRewardIntervalDecisions: 5
   gripHoldMaxDecisions: 20
   gripHoldTickBonus: 5
@@ -701,7 +699,6 @@ MonoBehaviour:
   dbg_SuddenMoveApplied: 0
   dbg_GripHoldBonusApplied: 0
   dbg_GripLostApplied: 0
-  dbg_FallPenaltyApplied: 0
   timeSinceBallCap: 10
 --- !u!114 &8517436835133471032
 MonoBehaviour:
@@ -749,8 +746,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DomainRandomizer
   enableRandomization: 1
-  robotRb: {fileID: 0}
-  track: {fileID: 0}
+  robotRb: {fileID: 3482213230714435695}
+  track: {fileID: 5933892264141329655}
   ball: {fileID: 0}
   randomizeRobotMass: 1
   robotMassRange: {x: 1, y: 4}
