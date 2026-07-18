@@ -383,6 +383,22 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!114 &1590215311 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 5933892264141329655, guid: 44cb2d86383317a40861bfecb64071df, type: 3}
+  m_PrefabInstance: {fileID: 3598570889821160146}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8a30e7ef3276de46990fd1d576fb713, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TrackController
+--- !u!54 &1590215313 stripped
+Rigidbody:
+  m_CorrespondingSourceObject: {fileID: 3482213230714435695, guid: 44cb2d86383317a40861bfecb64071df, type: 3}
+  m_PrefabInstance: {fileID: 3598570889821160146}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &37420416292514563 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2506492417572928163, guid: 9d5970e14766a2246971a969eea7b635, type: 3}
@@ -462,13 +478,21 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 8479779244804692342}
     - target: {fileID: 592650588668096372, guid: 44cb2d86383317a40861bfecb64071df, type: 3}
-      propertyPath: suddenMovePenalty
-      value: 0.1
-      objectReference: {fileID: 0}
-    - target: {fileID: 592650588668096372, guid: 44cb2d86383317a40861bfecb64071df, type: 3}
       propertyPath: obstacleRandomizer
       value: 
       objectReference: {fileID: 8479779244804692343}
+    - target: {fileID: 1024307701010757667, guid: 44cb2d86383317a40861bfecb64071df, type: 3}
+      propertyPath: ball
+      value: 
+      objectReference: {fileID: 37420416292514563}
+    - target: {fileID: 1024307701010757667, guid: 44cb2d86383317a40861bfecb64071df, type: 3}
+      propertyPath: track
+      value: 
+      objectReference: {fileID: 1590215311}
+    - target: {fileID: 1024307701010757667, guid: 44cb2d86383317a40861bfecb64071df, type: 3}
+      propertyPath: robotRb
+      value: 
+      objectReference: {fileID: 1590215313}
     - target: {fileID: 3892300228743029974, guid: 44cb2d86383317a40861bfecb64071df, type: 3}
       propertyPath: targetBall
       value: 

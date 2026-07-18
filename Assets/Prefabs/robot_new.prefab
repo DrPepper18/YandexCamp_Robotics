@@ -215,13 +215,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2099760405345867823}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.7603324, y: 0.11796164, z: 0.1435366, w: 0.6223962}
-  m_LocalPosition: {x: 0.00969002, y: -0.0042499094, z: 0.0029399982}
+  m_LocalRotation: {x: 0.70467484, y: 0.1053336, z: 0.15304421, w: 0.6847742}
+  m_LocalPosition: {x: 0.009690063, y: -0.004250024, z: 0.0029399982}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 8982536610452041731}
-  m_LocalEulerAnglesHint: {x: 65.866, y: 116.751, z: 118.871}
+  m_LocalEulerAnglesHint: {x: 68.883, y: 92.438, z: 96.371}
 --- !u!1 &3080819933107493112
 GameObject:
   m_ObjectHideFlags: 0
@@ -484,6 +484,7 @@ GameObject:
   - component: {fileID: 592650588668096372}
   - component: {fileID: 8517436835133471032}
   - component: {fileID: 2215220070370611576}
+  - component: {fileID: 1024307701010757667}
   m_Layer: 0
   m_Name: robot_new
   m_TagString: Untagged
@@ -658,7 +659,7 @@ MonoBehaviour:
   sensors: {fileID: 4196386742864587347}
   yolo: {fileID: 3892300228743029974}
   realVision: {fileID: 0}
-  randomizer: {fileID: 0}
+  randomizer: {fileID: 1024307701010757667}
   obstacleRandomizer: {fileID: 0}
   cameraServo: {fileID: 7635952787088559098}
   maxServoAngle: 90
@@ -680,7 +681,7 @@ MonoBehaviour:
   centeringRewardScale: 0.01
   backwardVisiblePenalty: 0.001
   backwardBlindPenalty: 0.001
-  suddenMovePenalty: 0.01
+  suddenMovePenalty: 0.1
   suddenMoveSignificance: 0.2
   oscillationWindowDecisions: 12
   sideIRCriticalPenalty: 0.1
@@ -735,6 +736,38 @@ MonoBehaviour:
   DecisionPeriod: 5
   DecisionStep: 0
   TakeActionsBetweenDecisions: 1
+--- !u!114 &1024307701010757667
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4477890285157004595}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be4fd7a49672b5b0c8767baf07534225, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DomainRandomizer
+  enableRandomization: 1
+  robotRb: {fileID: 0}
+  track: {fileID: 0}
+  ball: {fileID: 0}
+  randomizeRobotMass: 1
+  robotMassRange: {x: 1, y: 4}
+  randomizeMotors: 1
+  moveSpeedRange: {x: 0.3, y: 0.7}
+  turnSpeedRange: {x: 80, y: 160}
+  randomizeBall: 1
+  ballMassMul: {x: 0.5, y: 2}
+  ballScaleMul: {x: 0.8, y: 1.2}
+  sonarNoise: 1
+  sonarNoiseAmp: 0.05
+  yoloDropout: 1
+  dropoutAngularSpeed: 0.5
+  dropoutChance: 0.15
+  dropoutSteps: {x: 5, y: 16}
+  actionLatency: 1
+  latencySteps: {x: 8, y: 14}
 --- !u!1 &4506544541601232857
 GameObject:
   m_ObjectHideFlags: 0
