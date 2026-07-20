@@ -680,7 +680,7 @@ MonoBehaviour:
   centeringRewardScale: 0.1
   backwardVisiblePenalty: 0.2
   backwardBlindPenalty: 0.001
-  suddenMovePenalty: 1
+  suddenMovePenalty: 3
   suddenMoveSignificance: 0.1
   oscillationWindowDecisions: 12
   sideIRCriticalPenalty: 0.1
