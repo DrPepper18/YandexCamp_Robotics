@@ -70,8 +70,8 @@ public class RobotBrain : Agent
     [Header("Rewards (all fixed amounts - no multipliers/percentages anywhere)")]
     [Tooltip("Flat penalty per step while standing still (|gas| ~ 0). Moving forward alone gives nothing (0).")]
     [SerializeField] private float standingStillPenalty = 0.001f;
-    [Tooltip("Flat reward per step for closing distance on a VISIBLE ball")]
-    [SerializeField] private float towardBallReward = 0.003f;
+    [Tooltip("ballDistanceReward * (1-|BallDistance|), rewards being close to a VISIBLE ball regardless of whether this step happened to close distance")]
+    [SerializeField] private float ballDistanceReward = 0.1f;
     [Tooltip("Scale for centeringRewardScale * (1-|ServoAngle|) * (1-|BallAngle|), only while the ball is visible")]
     [SerializeField] private float centeringRewardScale = 0.001f;
     [Tooltip("Flat penalty per step for driving backwards while the ball IS visible")]
@@ -99,10 +99,14 @@ public class RobotBrain : Agent
     [SerializeField] private float gripHoldTickBonus = 50f;
     [Tooltip("Flat penalty when the claw IR sensor was active and then deactivates before reaching gripHoldMaxDecisions (ball touched the claw and was lost)")]
     [SerializeField] private float gripLostPenalty = 50f;
+    [Tooltip("Flat bonus on top of everything else when the episode ends via a SUCCESSFUL hold (not a timeout)")]
+    [SerializeField] private float successEpisodeReward = 20f;
+    [Tooltip("Flat penalty when the episode ends because time ran out without ever completing the claw hold (never found/caught the ball in time)")]
+    [SerializeField] private float timeoutPenalty = 20f;
 
     [Header("Debug - live reward breakdown (read-only, updates every step in Play mode)")]
     [SerializeField] private float dbg_StandingStillApplied;
-    [SerializeField] private float dbg_TowardBallApplied;
+    [SerializeField] private float dbg_BallDistanceApplied;
     [SerializeField] private float dbg_CenteringApplied;
     [SerializeField] private float dbg_BackwardApplied;
     [SerializeField] private float dbg_SideIRCriticalApplied;
@@ -110,6 +114,8 @@ public class RobotBrain : Agent
     [SerializeField] private float dbg_SuddenMoveApplied;
     [SerializeField] private float dbg_GripHoldBonusApplied;
     [SerializeField] private float dbg_GripLostApplied;
+    [SerializeField] private float dbg_SuccessEpisodeApplied;
+    [SerializeField] private float dbg_TimeoutPenaltyApplied;
 
     [Header("Observation normalization")]
     [SerializeField] private float timeSinceBallCap = 10f;  // s
@@ -125,7 +131,6 @@ public class RobotBrain : Agent
     private float servoAngle;
     private float lastKnownBallAngle;
     private float timeSinceBall;
-    private float prevWorldDistance;
     // Last SIGNIFICANT (|value| > suddenMoveSignificance) direction seen for each channel
     // (-1, +1, or 0 = none recorded yet), and how many decisions ago that was. A reversal
     // only counts as "sudden" if the opposite significant direction reappears within
@@ -194,7 +199,6 @@ public class RobotBrain : Agent
             gasSigAge = steerSigAge = camSigAge = 999999;
             gripHoldDecisions = 0;
             gripRewardTicksGranted = 0;
-            prevWorldDistance = FlatDistanceToBall();
             return;
         }
 
@@ -276,7 +280,6 @@ public class RobotBrain : Agent
         gasSigAge = steerSigAge = camSigAge = 999999;
         gripHoldDecisions = 0;
         gripRewardTicksGranted = 0;
-        prevWorldDistance = FlatDistanceToBall();
 
         // Domain Randomization (Practice 5): physics + latency queue reset
         if (randomizer != null) randomizer.ApplyEpisodeRandomization(IsTraining);
@@ -379,6 +382,8 @@ public class RobotBrain : Agent
     {
         dbg_GripHoldBonusApplied = 0f;
         dbg_GripLostApplied = 0f;
+        dbg_SuccessEpisodeApplied = 0f;
+        dbg_TimeoutPenaltyApplied = 0f;
 
         // ---- Claw hold tracking: purely observational - driving is NEVER frozen while
         // the sensor is active. Flat, fixed bonus per tick (NOT a % of cumulative reward -
@@ -400,6 +405,8 @@ public class RobotBrain : Agent
 
                 if (gripHoldDecisions >= gripHoldMaxDecisions)
                 {
+                    Add(successEpisodeReward);
+                    dbg_SuccessEpisodeApplied = successEpisodeReward;
                     EndEpisode();   // success
                     return;
                 }
@@ -423,18 +430,6 @@ public class RobotBrain : Agent
         // SimulatedYoloCamera's raycast line-of-sight check (or RealVision on hardware),
         // so this means "actually seen", not just "somewhere in the FOV cone through a wall".
         bool ballVisible = Obs08_BallVisible > 0.5f;
-        float dist = ball != null ? FlatDistanceToBall() : float.MaxValue;
-
-        // Ground-truth world distance must never leak into reward while the robot can't
-        // actually see the ball - otherwise driving blind gets rewarded/punished for a
-        // distance change it has no way of perceiving. Only compared/updated on steps
-        // where the ball is actually visible.
-        bool movingToward = false;
-        if (ball != null && ballVisible)
-        {
-            movingToward = dist < prevWorldDistance;
-            prevWorldDistance = dist;
-        }
 
         // --- Standing still: flat penalty. Moving forward alone gives nothing (0). ---
         bool standingStill = Mathf.Abs(gas) <= 0.0001f;
@@ -460,21 +455,29 @@ public class RobotBrain : Agent
             dbg_BackwardApplied = 0f;
         }
 
-        // --- Toward ball: flat reward, only counted while the ball is actually visible ---
-        if (movingToward)
+        // --- Ball distance: reward for BEING close to a visible ball (not for having just
+        // moved closer this step) - replaces the old movement-based "driving forward while
+        // the ball happens to be visible" reward with a genuine "closer = better" signal.
+        // Obs06_BallDistance already defaults to 1 (far) when the ball isn't visible, so
+        // this is naturally zero whenever ballVisible is false.
+        if (ballVisible)
         {
-            Add(towardBallReward);
-            dbg_TowardBallApplied = towardBallReward;
+            float diff = Mathf.Abs(Obs06_BallDistance);
+            float ballDist = ballDistanceReward * (1f - diff * diff);
+            Add(ballDist);
+            dbg_BallDistanceApplied = ballDist;
         }
         else
         {
-            dbg_TowardBallApplied = 0f;
+            dbg_BallDistanceApplied = 0f;
         }
 
         // --- Centering: flat-scaled formula, only while visible ---
         if (ballVisible)
         {
-            float centering = centeringRewardScale * (1f - Mathf.Abs(Obs09_ServoAngleNorm)) * (1f - Mathf.Abs(Obs05_BallAngle));
+            float a = Mathf.Abs(Obs09_ServoAngleNorm);
+            float b = Mathf.Abs(Obs05_BallAngle);
+            float centering = centeringRewardScale * (1f - a * a) * (1f - b * b);
             Add(centering);
             dbg_CenteringApplied = centering;
         }
@@ -559,9 +562,15 @@ public class RobotBrain : Agent
         // Mission mode: the FSM owns the mission - never terminate episodes.
         if (missionMode) return;
 
-        // Time up: truncate without a big penalty so the episode always resets.
+        // Time up: reaching here always means the claw hold was never completed (the
+        // success branch above already returned early otherwise) - i.e. the robot failed
+        // to find/catch the ball in time. Flat penalty on top of the truncation.
         if (episodeSteps >= maxEpisodeSteps)
+        {
+            Add(-timeoutPenalty);
+            dbg_TimeoutPenaltyApplied = -timeoutPenalty;
             EndEpisode();
+        }
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
@@ -578,13 +587,5 @@ public class RobotBrain : Agent
     }
 
     // ---- helpers ----
-    private float FlatDistanceToBall()
-    {
-        if (ball == null) return 0f;
-        Vector3 a = transform.position; a.y = 0f;
-        Vector3 b = ball.position;      b.y = 0f;
-        return Vector3.Distance(a, b);
-    }
-
     private void Add(float r) { AddReward(r); StepReward += r; }
 }
