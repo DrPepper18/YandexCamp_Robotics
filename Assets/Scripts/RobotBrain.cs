@@ -31,6 +31,8 @@ public class RobotBrain : Agent
     [SerializeField] private RealVision realVision;
     [Tooltip("Practice 7 (HIL): optional bridge to the real robot over ROS. When assigned, every action step's gas/steer/camera command is published over ROS - but only while NOT connected to the ML-Agents trainer (IsTraining == false), so training runs never spam ROS topics with a nonexistent robot listening. This is what lets driving in Unity (WASD via Heuristic, or a running inference policy) actually move the physical GFS-X.")]
     [SerializeField] private ROSBridge rosBridge;
+    [Tooltip("Optional CSV telemetry logger (sim-to-real diagnostics). When assigned and its own enableLogging is ON, one row is appended every decision step")]
+    [SerializeField] private DiagnosticLogger diagnosticLogger;
 
     [Header("Domain Randomization (optional)")]
     [Tooltip("Optional DomainRandomizer component. Leave empty to train on a clean environment")]
@@ -147,6 +149,12 @@ public class RobotBrain : Agent
     private int gripHoldDecisions;
     private int gripRewardTicksGranted;
 
+    // ---- DiagnosticLogger ground-truth tracking (sim-to-real telemetry only,
+    // never fed into observations/rewards) ----
+    private Vector3 episodeStartPos;
+    private Vector3 lastLogPos;
+    private float lastLogTime;
+
     /// <summary>True when connected to the Python trainer (used later for domain randomization / ROSBridge gating).</summary>
     public bool IsTraining => Academy.Instance.IsCommunicatorOn;
 
@@ -188,6 +196,10 @@ public class RobotBrain : Agent
         if (realVision == null) realVision = GetComponentInChildren<RealVision>(true);
         if (realVision == null) realVision = FindFirstObjectByType<RealVision>();
 
+        if (diagnosticLogger == null) diagnosticLogger = GetComponent<DiagnosticLogger>();
+        if (diagnosticLogger == null) diagnosticLogger = GetComponentInChildren<DiagnosticLogger>(true);
+        if (diagnosticLogger == null) diagnosticLogger = FindFirstObjectByType<DiagnosticLogger>();
+
         startPos = spawnPoint != null ? spawnPoint.position : transform.position;
         startRot = spawnPoint != null ? spawnPoint.rotation : transform.rotation;
 
@@ -215,6 +227,9 @@ public class RobotBrain : Agent
             gasSigAge = steerSigAge = camSigAge = 999999;
             gripHoldDecisions = 0;
             gripRewardTicksGranted = 0;
+            episodeStartPos = transform.position;
+            lastLogPos = transform.position;
+            lastLogTime = Time.time;
             return;
         }
 
@@ -232,6 +247,10 @@ public class RobotBrain : Agent
         rb.position = spawn;
         rb.rotation = startRot;
         transform.SetPositionAndRotation(spawn, startRot);
+
+        episodeStartPos = spawn;
+        lastLogPos = spawn;
+        lastLogTime = Time.time;
 
         // Reset camera servo
         servoAngle = 0f;
@@ -410,6 +429,22 @@ public class RobotBrain : Agent
         dbg_SuccessEpisodeApplied = 0f;
         dbg_TimeoutPenaltyApplied = 0f;
         dbg_BallBumperApplied = 0f;
+
+        // ---- Diagnostic telemetry (sim-to-real CSV log, ground truth only used here -
+        // never fed into observations/rewards). One row per decision step.
+        if (diagnosticLogger != null)
+        {
+            float dt = Time.time - lastLogTime;
+            float speed = dt > 0.0001f ? Vector3.Distance(transform.position, lastLogPos) / dt : 0f;
+            diagnosticLogger.LogStep(
+                episodeSteps, Obs08_BallVisible > 0.5f, Obs05_BallAngle, Obs06_BallDistance,
+                Obs01_Ultrasonic, Obs02_LeftIR, Obs03_RightIR, Obs04_GripperIR, servoAngle,
+                gas, steer, Obs10_HasBall > 0.5f, gripHoldDecisions, false,
+                transform.position.x - episodeStartPos.x, transform.position.z - episodeStartPos.z,
+                transform.eulerAngles.y, speed);
+            lastLogPos = transform.position;
+            lastLogTime = Time.time;
+        }
 
         // ---- Claw hold tracking: purely observational - driving is NEVER frozen while
         // the sensor is active. Flat, fixed bonus per tick (NOT a % of cumulative reward -
