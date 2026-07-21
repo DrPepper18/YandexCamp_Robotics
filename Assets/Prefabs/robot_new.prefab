@@ -545,7 +545,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4477890285157004595}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7acef0b79454c9b4dae3f8139bc4ba77, type: 3}
   m_Name: 
@@ -682,12 +682,12 @@ MonoBehaviour:
   missionMode: 0
   standingStillPenalty: 0.01
   ballDistanceReward: 0.15
-  gtBallApproachReward: 5
+  gtBallApproachReward: 40
   gtBallRetreatPenalty: 0.1
   centeringRewardScale: 0.1
   backwardVisiblePenalty: 0.2
   backwardBlindPenalty: 0.001
-  suddenMovePenalty: 3
+  suddenMovePenalty: 0.01
   suddenMoveSignificance: 0.1
   oscillationWindowDecisions: 12
   sideIRCriticalPenalty: 0.1
@@ -697,8 +697,8 @@ MonoBehaviour:
   gripHoldMaxDecisions: 20
   gripHoldTickBonus: 5
   gripLostPenalty: 5
-  successEpisodeReward: 30
-  timeoutPenalty: 30
+  successEpisodeReward: 100
+  timeoutPenalty: 100
   ballBumperPenalty: 1
   dbg_StandingStillApplied: 0
   dbg_BallDistanceApplied: 0
