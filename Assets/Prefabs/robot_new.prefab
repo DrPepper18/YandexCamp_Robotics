@@ -633,7 +633,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 1
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 0}
+  m_Model: {fileID: 5022602860645237092, guid: c82d66da2be299543ab91780f0b5e796, type: 3}
   m_InferenceDevice: 0
   m_BehaviorType: 0
   m_BehaviorName: GFSX_Brain
@@ -682,12 +682,12 @@ MonoBehaviour:
   missionMode: 0
   standingStillPenalty: 0.01
   ballDistanceReward: 0.15
-  gtBallApproachReward: 40
+  gtBallApproachReward: 30
   gtBallRetreatPenalty: 0.1
   centeringRewardScale: 0.1
   backwardVisiblePenalty: 0.2
   backwardBlindPenalty: 0.001
-  suddenMovePenalty: 0.01
+  suddenMovePenalty: 1
   suddenMoveSignificance: 0.1
   oscillationWindowDecisions: 12
   sideIRCriticalPenalty: 0.1
@@ -1427,15 +1427,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -5894863403822994359, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 1.86
+      value: 1.859
       objectReference: {fileID: 0}
     - target: {fileID: -5894863403822994359, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.433
+      value: 0.429
       objectReference: {fileID: 0}
     - target: {fileID: -5894863403822994359, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -0.494
+      value: 0.292
       objectReference: {fileID: 0}
     - target: {fileID: -5894863403822994359, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalRotation.w
@@ -1471,15 +1471,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -1255605710908113952, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 3.424
+      value: 3.423
       objectReference: {fileID: 0}
     - target: {fileID: -1255605710908113952, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.531
+      value: 0.527
       objectReference: {fileID: 0}
     - target: {fileID: -1255605710908113952, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -0.524
+      value: 0.262
       objectReference: {fileID: 0}
     - target: {fileID: -1255605710908113952, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalRotation.w
@@ -1567,15 +1567,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9078949020938347583, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 2.781
+      value: 2.78
       objectReference: {fileID: 0}
     - target: {fileID: 9078949020938347583, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.464
+      value: 0.46
       objectReference: {fileID: 0}
     - target: {fileID: 9078949020938347583, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -0.5
+      value: 0.286
       objectReference: {fileID: 0}
     - target: {fileID: 9078949020938347583, guid: 87fdc3ece8b6ffe4eb341cd9b86bef94, type: 3}
       propertyPath: m_LocalRotation.w
