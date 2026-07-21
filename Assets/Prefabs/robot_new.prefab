@@ -624,7 +624,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Policies.BehaviorParameters
   m_BrainParameters:
-    VectorObservationSize: 11
+    VectorObservationSize: 14
     NumStackedVectorObservations: 4
     m_ActionSpec:
       m_NumContinuousActions: 3
@@ -633,7 +633,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 1
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 5022602860645237092, guid: 18dcfb5b7f1668846adc74acc403f07e, type: 3}
+  m_Model: {fileID: 0}
   m_InferenceDevice: 0
   m_BehaviorType: 0
   m_BehaviorName: GFSX_Brain
@@ -663,6 +663,7 @@ MonoBehaviour:
   yolo: {fileID: 3892300228743029974}
   realVision: {fileID: 399774005162649304}
   rosBridge: {fileID: 4243258662686757381}
+  diagnosticLogger: {fileID: 177196164916142822}
   randomizer: {fileID: 1024307701010757667}
   obstacleRandomizer: {fileID: 0}
   cameraServo: {fileID: 7635952787088559098}
@@ -681,6 +682,8 @@ MonoBehaviour:
   missionMode: 0
   standingStillPenalty: 0.01
   ballDistanceReward: 0.15
+  gtBallApproachReward: 5
+  gtBallRetreatPenalty: 0.1
   centeringRewardScale: 0.1
   backwardVisiblePenalty: 0.2
   backwardBlindPenalty: 0.001
@@ -699,6 +702,7 @@ MonoBehaviour:
   ballBumperPenalty: 1
   dbg_StandingStillApplied: 0
   dbg_BallDistanceApplied: 0
+  dbg_GTBallApproachApplied: 0
   dbg_CenteringApplied: 0
   dbg_BackwardApplied: 0
   dbg_SideIRCriticalApplied: 0
@@ -710,6 +714,8 @@ MonoBehaviour:
   dbg_TimeoutPenaltyApplied: 0
   dbg_BallBumperApplied: 0
   timeSinceBallCap: 10
+  displacementNormRange: 5
+  groundTruthBallDistanceMaxRange: 5
 --- !u!114 &8517436835133471032
 MonoBehaviour:
   m_ObjectHideFlags: 0

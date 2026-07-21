@@ -6,8 +6,10 @@ using Unity.MLAgents.Sensors;
 /// <summary>
 /// Interceptor GFS-X AI agent. Glues the team scripts (TrackController,
 /// VirtualSensors, SimulatedYoloCamera) into one "brain":
-///   - collects 11 observations (order strictly matches the Practice 3 table,
-///     minus odometry/heading/speed - the real GFS-X has none of those sensors),
+///   - collects 14 observations (order strictly matches the Practice 3 table,
+///     plus 3 ground-truth odometry observations on this branch - X/Z displacement
+///     since episode start and an explicit ball distance that isn't gated by
+///     camera visibility. These have no real-hardware equivalent, unlike the rest),
 ///   - dispatches 3 continuous actions (no discrete action - the claw is autonomous,
 ///     driven directly by the GripperIR sensor, matching real hardware exactly),
 ///   - computes bounded rewards (all fixed amounts, no multipliers/percentages),
@@ -16,7 +18,7 @@ using Unity.MLAgents.Sensors;
 ///
 /// Behavior Parameters on the robot MUST match:
 ///   Behavior Name = GFSX_Brain (same as config.yaml)
-///   Vector Observation -> Space Size = 11, Stacked Vectors = 4
+///   Vector Observation -> Space Size = 14, Stacked Vectors = 4
 ///   Continuous Actions = 3, Discrete Branches = 0
 /// Leave the inspector "Max Step" = 0; this script caps the episode itself.
 /// </summary>
@@ -76,6 +78,10 @@ public class RobotBrain : Agent
     [SerializeField] private float standingStillPenalty = 0.001f;
     [Tooltip("ballDistanceReward * (1-|BallDistance|), rewards being close to a VISIBLE ball regardless of whether this step happened to close distance")]
     [SerializeField] private float ballDistanceReward = 0.1f;
+    [Tooltip("Ground truth (odometry) branch: potential-based meta-reward using GROUND TRUTH ball distance - unlike ballDistanceReward above, NOT gated by camera visibility. While the GT distance to the ball is actually shrinking vs the last decision, reward = gtBallApproachReward * (prevDist - currDist). ~0 while not making net progress. See gtBallRetreatPenalty for the opposite case")]
+    [SerializeField] private float gtBallApproachReward = 0.001f;
+    [Tooltip("Ground truth (odometry) branch: flat penalty applied instead of gtBallApproachReward when the GT distance to the ball increased since the last decision (moving away). Independently tunable from gtBallApproachReward - not just its negative")]
+    [SerializeField] private float gtBallRetreatPenalty = 0.001f;
     [Tooltip("Scale for centeringRewardScale * (1-|ServoAngle|) * (1-|BallAngle|), only while the ball is visible")]
     [SerializeField] private float centeringRewardScale = 0.001f;
     [Tooltip("Flat penalty per step for driving backwards while the ball IS visible")]
@@ -113,6 +119,7 @@ public class RobotBrain : Agent
     [Header("Debug - live reward breakdown (read-only, updates every step in Play mode)")]
     [SerializeField] private float dbg_StandingStillApplied;
     [SerializeField] private float dbg_BallDistanceApplied;
+    [SerializeField] private float dbg_GTBallApproachApplied;
     [SerializeField] private float dbg_CenteringApplied;
     [SerializeField] private float dbg_BackwardApplied;
     [SerializeField] private float dbg_SideIRCriticalApplied;
@@ -126,6 +133,10 @@ public class RobotBrain : Agent
 
     [Header("Observation normalization")]
     [SerializeField] private float timeSinceBallCap = 10f;  // s
+    [Tooltip("Ground truth (odometry) branch: normalization range (meters) for the X/Z displacement-since-episode-start observations. Obs = Clamp(-1,1, displacement/this)")]
+    [SerializeField] private float displacementNormRange = 5f;
+    [Tooltip("Ground truth (odometry) branch: normalization range (meters) for the explicit ball-distance observation, which - unlike Obs06_BallDistance - is always present regardless of camera visibility. Obs = Clamp01(distance/this)")]
+    [SerializeField] private float groundTruthBallDistanceMaxRange = 5f;
 
     // ---- Rigidbody / start poses ----
     private Rigidbody rb;
@@ -155,6 +166,14 @@ public class RobotBrain : Agent
     private Vector3 lastLogPos;
     private float lastLogTime;
 
+    // GT ball distance (unclamped, normalized by groundTruthBallDistanceMaxRange) as of the
+    // previous DECISION, for the potential-based gtBallApproachReward/gtBallRetreatPenalty.
+    // -1 = no baseline yet (first decision after reset). pendingGtBallReward is staged once
+    // per decision in CollectObservations and consumed exactly once in ComputeRewards - see
+    // the comment there for why this can't just be computed inline in ComputeRewards.
+    private float prevGtBallDistRaw = -1f;
+    private float pendingGtBallReward;
+
     /// <summary>True when connected to the Python trainer (used later for domain randomization / ROSBridge gating).</summary>
     public bool IsTraining => Academy.Instance.IsCommunicatorOn;
 
@@ -170,6 +189,10 @@ public class RobotBrain : Agent
     public float Obs09_ServoAngleNorm    { get; private set; }
     public float Obs10_HasBall           { get; private set; }
     public float Obs11_TimeSinceBallNorm { get; private set; }
+    // Ground truth (odometry) branch - no real-hardware equivalent
+    public float Obs12_DisplacementX          { get; private set; }
+    public float Obs13_DisplacementZ          { get; private set; }
+    public float Obs14_GroundTruthBallDistance { get; private set; }
 
     public float ActGas       { get; private set; }
     public float ActSteer     { get; private set; }
@@ -230,6 +253,8 @@ public class RobotBrain : Agent
             episodeStartPos = transform.position;
             lastLogPos = transform.position;
             lastLogTime = Time.time;
+            prevGtBallDistRaw = -1f;
+            pendingGtBallReward = 0f;
             return;
         }
 
@@ -251,6 +276,8 @@ public class RobotBrain : Agent
         episodeStartPos = spawn;
         lastLogPos = spawn;
         lastLogTime = Time.time;
+        prevGtBallDistRaw = -1f;
+        pendingGtBallReward = 0f;
 
         // Reset camera servo
         servoAngle = 0f;
@@ -367,6 +394,50 @@ public class RobotBrain : Agent
         // 11. Time since last detection
         Obs11_TimeSinceBallNorm = Mathf.Clamp01(timeSinceBall / timeSinceBallCap);
 
+        // 12-13. Ground truth (odometry) displacement since episode start - X/Z, world
+        // frame. No real-hardware equivalent (no wheel encoders on the real GFS-X);
+        // this branch adds it back in deliberately as ground truth for the sim.
+        Obs12_DisplacementX = Mathf.Clamp((transform.position.x - episodeStartPos.x) / displacementNormRange, -1f, 1f);
+        Obs13_DisplacementZ = Mathf.Clamp((transform.position.z - episodeStartPos.z) / displacementNormRange, -1f, 1f);
+
+        // 14. Ground truth ball distance - unlike Obs06_BallDistance, NOT gated by
+        // camera visibility (present even if the ball is behind the robot or out of FOV).
+        // gtRawNorm is the SAME quantity unclamped - used below for the potential-based
+        // reward so the observation's [0,1] clamp can't create a reward dead zone once the
+        // robot is farther than groundTruthBallDistanceMaxRange from the ball.
+        float gtRawNorm;
+        if (ball != null)
+        {
+            Vector3 a = transform.position; a.y = 0f;
+            Vector3 b = ball.position;       b.y = 0f;
+            gtRawNorm = Vector3.Distance(a, b) / groundTruthBallDistanceMaxRange;
+        }
+        else
+        {
+            gtRawNorm = 1f;
+        }
+        Obs14_GroundTruthBallDistance = Mathf.Clamp01(gtRawNorm);
+
+        // Potential-based meta-reward for the ball: computed HERE, not in ComputeRewards,
+        // because CollectObservations is the only method that runs exactly once per real
+        // ML-Agents DECISION. With DecisionPeriod > 1 and TakeActionsBetweenDecisions,
+        // OnActionReceived/ComputeRewards fires every physics tick, re-using the same
+        // cached observations on the ticks in between real decisions - comparing distance
+        // against itself on those ticks made this fire in an erratic, mostly-empty pattern.
+        // Staged here once per decision, then applied exactly once in ComputeRewards.
+        if (prevGtBallDistRaw >= 0f)
+        {
+            float delta = prevGtBallDistRaw - gtRawNorm;
+            if (delta > 0f)      pendingGtBallReward = gtBallApproachReward * delta;   // approaching
+            else if (delta < 0f) pendingGtBallReward = -gtBallRetreatPenalty;          // retreating
+            else                 pendingGtBallReward = 0f;
+        }
+        else
+        {
+            pendingGtBallReward = 0f;
+        }
+        prevGtBallDistRaw = gtRawNorm;
+
         // --- Feed strictly in the Practice 3 table order ---
         sensor.AddObservation(Obs01_Ultrasonic);
         sensor.AddObservation(Obs02_LeftIR);
@@ -379,6 +450,9 @@ public class RobotBrain : Agent
         sensor.AddObservation(Obs09_ServoAngleNorm);
         sensor.AddObservation(Obs10_HasBall);
         sensor.AddObservation(Obs11_TimeSinceBallNorm);
+        sensor.AddObservation(Obs12_DisplacementX);
+        sensor.AddObservation(Obs13_DisplacementZ);
+        sensor.AddObservation(Obs14_GroundTruthBallDistance);
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -532,6 +606,17 @@ public class RobotBrain : Agent
         {
             dbg_BallDistanceApplied = 0f;
         }
+
+        // --- Ground truth (odometry) branch: potential-based meta-reward for the ball -
+        // positive gtBallApproachReward*progress while actually approaching, flat negative
+        // gtBallRetreatPenalty while retreating (two independently tunable Inspector
+        // values), ~0 while not making net progress. Always active - NOT gated by
+        // ballVisible. The comparison itself already happened once this decision in
+        // CollectObservations (see the comment there); here we just apply-and-consume the
+        // staged value exactly once.
+        Add(pendingGtBallReward);
+        dbg_GTBallApproachApplied = pendingGtBallReward;
+        pendingGtBallReward = 0f;
 
         // --- Centering: flat-scaled formula, only while visible ---
         if (ballVisible)
