@@ -29,6 +29,8 @@ public class RobotBrain : Agent
     [SerializeField] private SimulatedYoloCamera yolo;
     [Tooltip("Practice 7 (HIL): optional real-YOLO receiver. When assigned AND its useYOLO is ON, vision comes from the real robot instead of the simulated camera")]
     [SerializeField] private RealVision realVision;
+    [Tooltip("Practice 7 (HIL): optional bridge to the real robot over ROS. When assigned, every action step's gas/steer/camera command is published over ROS - but only while NOT connected to the ML-Agents trainer (IsTraining == false), so training runs never spam ROS topics with a nonexistent robot listening. This is what lets driving in Unity (WASD via Heuristic, or a running inference policy) actually move the physical GFS-X.")]
+    [SerializeField] private ROSBridge rosBridge;
 
     [Header("Domain Randomization (optional)")]
     [Tooltip("Optional DomainRandomizer component. Leave empty to train on a clean environment")]
@@ -103,6 +105,8 @@ public class RobotBrain : Agent
     [SerializeField] private float successEpisodeReward = 20f;
     [Tooltip("Flat penalty when the episode ends because time ran out without ever completing the claw hold (never found/caught the ball in time)")]
     [SerializeField] private float timeoutPenalty = 20f;
+    [Tooltip("Flat penalty each time the ball touches the TriggerBamper collider (reported by BumperSensor)")]
+    [SerializeField] private float ballBumperPenalty = 1f;
 
     [Header("Debug - live reward breakdown (read-only, updates every step in Play mode)")]
     [SerializeField] private float dbg_StandingStillApplied;
@@ -116,6 +120,7 @@ public class RobotBrain : Agent
     [SerializeField] private float dbg_GripLostApplied;
     [SerializeField] private float dbg_SuccessEpisodeApplied;
     [SerializeField] private float dbg_TimeoutPenaltyApplied;
+    [SerializeField] private float dbg_BallBumperApplied;
 
     [Header("Observation normalization")]
     [SerializeField] private float timeSinceBallCap = 10f;  // s
@@ -171,6 +176,17 @@ public class RobotBrain : Agent
     public override void Initialize()
     {
         rb = GetComponent<Rigidbody>();
+
+        // Practice 7 HIL: auto-find ROSBridge/RealVision if not wired up in the Inspector
+        // (e.g. dropped a component in via Add Component instead of dragging a reference).
+        // Checks this GameObject first, then children, then anywhere in the scene.
+        if (rosBridge == null) rosBridge = GetComponent<ROSBridge>();
+        if (rosBridge == null) rosBridge = GetComponentInChildren<ROSBridge>(true);
+        if (rosBridge == null) rosBridge = FindFirstObjectByType<ROSBridge>();
+
+        if (realVision == null) realVision = GetComponent<RealVision>();
+        if (realVision == null) realVision = GetComponentInChildren<RealVision>(true);
+        if (realVision == null) realVision = FindFirstObjectByType<RealVision>();
 
         startPos = spawnPoint != null ? spawnPoint.position : transform.position;
         startRot = spawnPoint != null ? spawnPoint.rotation : transform.rotation;
@@ -363,6 +379,15 @@ public class RobotBrain : Agent
         // Drive (SetCommand clamps to [-1,1] itself)
         if (track != null) track.SetCommand(gas, steer);
 
+        // ROS bridge (Practice 7 HIL): forward the same command to the real robot.
+        // Gated on !IsTraining - during mlagents-learn training there is no physical
+        // robot listening, so publishing would just spam the topics for nothing.
+        if (rosBridge != null && !IsTraining)
+        {
+            rosBridge.PublishCommand(gas, steer);
+            rosBridge.PublishCameraCmd(camCmd);
+        }
+
         // Camera pan: rotate around the WORLD vertical axis (robust to any
         // tilted parent hierarchy in the imported model - guarantees the pan
         // is left/right, never up/down)
@@ -384,6 +409,7 @@ public class RobotBrain : Agent
         dbg_GripLostApplied = 0f;
         dbg_SuccessEpisodeApplied = 0f;
         dbg_TimeoutPenaltyApplied = 0f;
+        dbg_BallBumperApplied = 0f;
 
         // ---- Claw hold tracking: purely observational - driving is NEVER frozen while
         // the sensor is active. Flat, fixed bonus per tick (NOT a % of cumulative reward -
@@ -571,6 +597,18 @@ public class RobotBrain : Agent
             dbg_TimeoutPenaltyApplied = -timeoutPenalty;
             EndEpisode();
         }
+    }
+
+    /// <summary>
+    /// Called by BumperSensor (attached to the TriggerBamper collider on the robot's
+    /// bumper) whenever the ball touches it. Not called from ComputeRewards because the
+    /// physics trigger callback can fire on any physics tick, independent of the
+    /// decision cadence - AddReward works correctly regardless of when it's called.
+    /// </summary>
+    public void OnBallHitBumper()
+    {
+        Add(-ballBumperPenalty);
+        dbg_BallBumperApplied = -ballBumperPenalty;
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)

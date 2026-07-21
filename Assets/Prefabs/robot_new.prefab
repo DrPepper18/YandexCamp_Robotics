@@ -485,6 +485,8 @@ GameObject:
   - component: {fileID: 8517436835133471032}
   - component: {fileID: 2215220070370611576}
   - component: {fileID: 1024307701010757667}
+  - component: {fileID: 4243258662686757381}
+  - component: {fileID: 399774005162649304}
   m_Layer: 0
   m_Name: robot_new
   m_TagString: Untagged
@@ -630,7 +632,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 1
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 0}
+  m_Model: {fileID: 5022602860645237092, guid: 18dcfb5b7f1668846adc74acc403f07e, type: 3}
   m_InferenceDevice: 0
   m_BehaviorType: 0
   m_BehaviorName: GFSX_Brain
@@ -658,7 +660,8 @@ MonoBehaviour:
   track: {fileID: 5933892264141329655}
   sensors: {fileID: 4196386742864587347}
   yolo: {fileID: 3892300228743029974}
-  realVision: {fileID: 0}
+  realVision: {fileID: 399774005162649304}
+  rosBridge: {fileID: 4243258662686757381}
   randomizer: {fileID: 1024307701010757667}
   obstacleRandomizer: {fileID: 0}
   cameraServo: {fileID: 7635952787088559098}
@@ -668,9 +671,9 @@ MonoBehaviour:
   ballTag: TargetBall
   arenaCenter: {fileID: 0}
   finishArea: {fileID: 0}
-  ballMinForward: 2
+  ballMinForward: 3
   ballMaxForward: 4.2
-  ballHalfWidth: 1.5
+  ballHalfWidth: 3
   robotSpawnJitter: 1
   spawnPoint: {fileID: 0}
   maxEpisodeSteps: 4000
@@ -690,8 +693,9 @@ MonoBehaviour:
   gripHoldMaxDecisions: 20
   gripHoldTickBonus: 5
   gripLostPenalty: 5
-  successEpisodeReward: 100
-  timeoutPenalty: 100
+  successEpisodeReward: 30
+  timeoutPenalty: 30
+  ballBumperPenalty: 1
   dbg_StandingStillApplied: 0
   dbg_BallDistanceApplied: 0
   dbg_CenteringApplied: 0
@@ -703,6 +707,7 @@ MonoBehaviour:
   dbg_GripLostApplied: 0
   dbg_SuccessEpisodeApplied: 0
   dbg_TimeoutPenaltyApplied: 0
+  dbg_BallBumperApplied: 0
   timeSinceBallCap: 10
 --- !u!114 &8517436835133471032
 MonoBehaviour:
@@ -769,6 +774,47 @@ MonoBehaviour:
   dropoutSteps: {x: 5, y: 16}
   actionLatency: 1
   latencySteps: {x: 8, y: 14}
+--- !u!114 &4243258662686757381
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4477890285157004595}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c58750a7e956364398288fb0c205140, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ROSBridge
+  topicName: /cmd_vel
+  gripperTopicName: /cmd_gripper
+  cameraTopicName: /cmd_camera_pan
+  maxLinearSpeed: 0.5
+  maxAngularSpeed: 1
+  emaAlpha: 0.8
+  watchdogTimeout: 0.5
+--- !u!114 &399774005162649304
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4477890285157004595}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab33237395a4181d48afd3e046a01949, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RealVision
+  udpPort: 5005
+  useYOLO: 0
+  signalTimeout: 0.5
+  bboxAtGripper: 0.45
+  bboxAtMaxRange: 0.04
+  seesBall: 0
+  relativeAngle: 0
+  normalizedDistance: 0
+  confidence: 0
+  lastPacketAge: 0
 --- !u!1 &4506544541601232857
 GameObject:
   m_ObjectHideFlags: 0
@@ -1031,8 +1077,9 @@ GameObject:
   m_Component:
   - component: {fileID: 3798586240710460886}
   - component: {fileID: 823372704627982660}
+  - component: {fileID: 3916717124509764446}
   m_Layer: 0
-  m_Name: GameObject
+  m_Name: TriggerBamper
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1046,13 +1093,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7278124082756892837}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 1.481, y: 0.548, z: 0.03}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalRotation: {x: 0.0012970055, y: 0.0019361374, z: 0.0011024908, w: 0.9999967}
+  m_LocalPosition: {x: 2.439, y: 0.382, z: 0.026}
+  m_LocalScale: {x: 2.5247471, y: 1.0004, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 17563228797856982}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0.148, y: 0.222, z: 0.127}
 --- !u!65 &823372704627982660
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -1074,6 +1121,20 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 0.41927698, z: 1.8662099}
   m_Center: {x: -2.9015118e-10, y: -0.086493745, z: -0.035963595}
+--- !u!114 &3916717124509764446
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7278124082756892837}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5c3153e7eba7c2409378dbc9eeed374, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BumperSensor
+  ballTag: TargetBall
+  brain: {fileID: 592650588668096372}
 --- !u!1 &7378506206709528679
 GameObject:
   m_ObjectHideFlags: 0
