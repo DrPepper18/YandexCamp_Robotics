@@ -36,6 +36,10 @@ public class ROSBridge : MonoBehaviour
     [Tooltip("Если за это время не поступает ни одна команда PublishCommand, мост автоматически отправит стоп.")]
     public float watchdogTimeout = 0.5f;
 
+    [Header("Sim-to-real quirks")]
+    [Tooltip("Временный костыль: ROS-нода на самом роботе сейчас перепутала местами linear.x/angular.z (газ крутит, руль едет вперёд-назад). Включено - компенсируем здесь, отправляя газ/руль в обратные поля Twist. Выключить, как только это починят на стороне робота.")]
+    public bool swapLinearAngular = true;
+
     private ROSConnection ros;
     private float smoothGas;
     private float smoothSteering;
@@ -99,9 +103,23 @@ public class ROSBridge : MonoBehaviour
             smoothSteering = emaAlpha * steering + (1f - emaAlpha) * smoothSteering;
         }
 
+        // Каждый канал масштабируется своим собственным лимитом (газ - линейным,
+        // руль - угловым) ДО того, как решаем, в какое поле Twist его класть -
+        // так итоговый диапазон скорости остаётся правильным независимо от свапа.
+        float linearOut = smoothGas * maxLinearSpeed;
+        float angularOut = smoothSteering * maxAngularSpeed;
+
         TwistMsg cmd = new TwistMsg();
-        cmd.linear.x = smoothGas * maxLinearSpeed;
-        cmd.angular.z = smoothSteering * maxAngularSpeed;
+        if (swapLinearAngular)
+        {
+            cmd.linear.x = angularOut;
+            cmd.angular.z = linearOut;
+        }
+        else
+        {
+            cmd.linear.x = linearOut;
+            cmd.angular.z = angularOut;
+        }
 
         if (ros != null)
             ros.Publish(topicName, cmd);

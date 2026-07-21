@@ -404,7 +404,6 @@ public class RobotBrain : Agent
         if (rosBridge != null && !IsTraining)
         {
             rosBridge.PublishCommand(gas, steer);
-            rosBridge.PublishCameraCmd(camCmd);
         }
 
         // Camera pan: rotate around the WORLD vertical axis (robust to any
@@ -418,6 +417,17 @@ public class RobotBrain : Agent
                     cameraServo.parent != null
                         ? cameraServo.parent.InverseTransformDirection(Vector3.up)
                         : Vector3.up);
+
+        // ROSBridge.PublishCameraCmd expects an ABSOLUTE target pan angle in degrees
+        // (its own parameter is literally named "yaw") - it must be sent AFTER servoAngle
+        // is updated above, and must be servoAngle itself, not the raw per-tick camCmd
+        // (-1/0/+1). Sending camCmd directly told the real servo "go to ~1 degree" every
+        // tick instead of accumulating a real pan angle, which is why Q/E did nothing on
+        // the physical robot.
+        if (rosBridge != null && !IsTraining)
+        {
+            rosBridge.PublishCameraCmd(servoAngle);
+        }
 
         ComputeRewards(gas, steer, camCmd);
     }
