@@ -39,6 +39,8 @@ public class ROSBridge : MonoBehaviour
     [Header("Sim-to-real quirks")]
     [Tooltip("Временный костыль: ROS-нода на самом роботе сейчас перепутала местами linear.x/angular.z (газ крутит, руль едет вперёд-назад). Включено - компенсируем здесь, отправляя газ/руль в обратные поля Twist. Выключить, как только это починят на стороне робота.")]
     public bool swapLinearAngular = true;
+    [Tooltip("Временный костыль: на реальном роботе W (газ вперёд) едет назад - знак газа инвертирован относительно симуляции. Включено - переворачиваем знак перед отправкой. Выключить, как только это починят на стороне робота.")]
+    public bool invertGas = true;
 
     private ROSConnection ros;
     private float smoothGas;
@@ -106,7 +108,8 @@ public class ROSBridge : MonoBehaviour
         // Каждый канал масштабируется своим собственным лимитом (газ - линейным,
         // руль - угловым) ДО того, как решаем, в какое поле Twist его класть -
         // так итоговый диапазон скорости остаётся правильным независимо от свапа.
-        float linearOut = smoothGas * maxLinearSpeed;
+        // Инверсия газа - тоже здесь, чтобы работать одинаково независимо от swapLinearAngular.
+        float linearOut = smoothGas * maxLinearSpeed * (invertGas ? -1f : 1f);
         float angularOut = smoothSteering * maxAngularSpeed;
 
         TwistMsg cmd = new TwistMsg();
