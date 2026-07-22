@@ -584,6 +584,7 @@ public class RobotBrain : Agent
                 {
                     Add(successEpisodeReward);
                     dbg_SuccessEpisodeApplied = successEpisodeReward;
+                    RecordRewardStats();
                     EndEpisode();   // success
                     return;
                 }
@@ -756,7 +757,11 @@ public class RobotBrain : Agent
         // No out-of-bounds check here - the arena is physically walled in.)
 
         // Mission mode: the FSM owns the mission - never terminate episodes.
-        if (missionMode) return;
+        if (missionMode)
+        {
+            RecordRewardStats();
+            return;
+        }
 
         // Time up: reaching here always means the claw hold was never completed (the
         // success branch above already returned early otherwise) - i.e. the robot failed
@@ -767,6 +772,34 @@ public class RobotBrain : Agent
             dbg_TimeoutPenaltyApplied = -timeoutPenalty;
             EndEpisode();
         }
+
+        RecordRewardStats();
+    }
+
+    /// <summary>
+    /// Pushes every reward-breakdown debug field to ML-Agents' StatsRecorder, so each
+    /// component shows up as its own chart in TensorBoard (nested under "Rewards/") instead
+    /// of only being visible live in the Inspector during Play mode. Safe to call regardless
+    /// of whether a trainer is attached - StatsRecorder just has nowhere to send stats to
+    /// when not training, it doesn't throw.
+    /// </summary>
+    private void RecordRewardStats()
+    {
+        var stats = Academy.Instance.StatsRecorder;
+        stats.Add("Rewards/StandingStill", dbg_StandingStillApplied);
+        stats.Add("Rewards/BallDistance", dbg_BallDistanceApplied);
+        stats.Add("Rewards/GTBallApproach", dbg_GTBallApproachApplied);
+        stats.Add("Rewards/Centering", dbg_CenteringApplied);
+        stats.Add("Rewards/GTCentering", dbg_GTCenteringApplied);
+        stats.Add("Rewards/Backward", dbg_BackwardApplied);
+        stats.Add("Rewards/SideIRCritical", dbg_SideIRCriticalApplied);
+        stats.Add("Rewards/UltrasonicCritical", dbg_UltrasonicCriticalApplied);
+        stats.Add("Rewards/SuddenMove", dbg_SuddenMoveApplied);
+        stats.Add("Rewards/GripHoldBonus", dbg_GripHoldBonusApplied);
+        stats.Add("Rewards/GripLost", dbg_GripLostApplied);
+        stats.Add("Rewards/SuccessEpisode", dbg_SuccessEpisodeApplied);
+        stats.Add("Rewards/TimeoutPenalty", dbg_TimeoutPenaltyApplied);
+        stats.Add("Rewards/BallBumper", dbg_BallBumperApplied);
     }
 
     /// <summary>

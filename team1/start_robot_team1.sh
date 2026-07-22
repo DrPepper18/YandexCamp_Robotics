@@ -14,8 +14,16 @@ echo "Очистка старого контейнера $CONTAINER_NAME..."
 docker rm -f $CONTAINER_NAME 2>/dev/null || true
 
 # Создаем абсолютно чистый контейнер с нуля!
+# --pid=host ДОБАВЛЕН: без него у контейнера СВОЙ отдельный PID namespace, даже
+# несмотря на --network host (тот только шарит СЕТЕВОЙ стек, порты видны, но
+# /proc - нет). Если порт 2001/2002/2005 держит процесс НА САМОМ ХОСТЕ (а не
+# внутри старого контейнера) - например, висящий сервис оригинального
+# приложения XiaoR - force_free_port() в xr_config.py физически не может его
+# ни увидеть, ни убить: он сканирует /proc, а из контейнера без --pid=host
+# виден только /proc самого контейнера. С --pid=host /proc общий с хостом -
+# force_free_port() видит и может убить любой процесс, что бы порт ни держало.
 echo "Создаем чистый контейнер из образа..."
-docker run -dt --name $CONTAINER_NAME --network host --privileged -v /dev:/dev ros_noetic_hardware_v2 bash
+docker run -dt --name $CONTAINER_NAME --network host --pid=host --privileged -v /dev:/dev ros_noetic_hardware_v2 bash
 
 # Ждем 2 секунды, чтобы демон Докера окончательно его поднял
 sleep 2
@@ -43,11 +51,19 @@ if [ -f "$SCRIPT_DIR/xr_music.py" ]; then
     docker cp "$SCRIPT_DIR/xr_music.py" $CONTAINER_NAME:/root/XiaoRGeek/xr_music.py
 fi
 
-# Патч xr_config: bind() портов BT/TCP-пульта (2001/2002) обёрнут в try/except,
-# чтобы "зависший" процесс с прошлого запуска не ронял импорт xr_ultrasonic/
-# xr_servo и, как следствие, инициализацию джойнтов робота (init_arm())
+# Патч xr_config: bind() портов BT/TCP-пульта (2001/2002/2005) обёрнут в
+# try/except + force_free_port(), чтобы "зависший" процесс не ронял импорт
+# xr_ultrasonic/xr_servo и, как следствие, инициализацию джойнтов (init_arm())
 if [ -f "$SCRIPT_DIR/xr_config.py" ]; then
     docker cp "$SCRIPT_DIR/xr_config.py" $CONTAINER_NAME:/root/XiaoRGeek/xr_config.py
+    # Самопроверка: убеждаемся, что патч реально попал в контейнер, а не осталась
+    # старая версия (именно это и произошло в прошлый раз - в логе была ошибка
+    # без try/except на строке ~102, то есть контейнер работал со СТАРЫМ файлом)
+    if docker exec $CONTAINER_NAME grep -q "force_free_port" /root/XiaoRGeek/xr_config.py; then
+        echo "  [OK] xr_config.py с патчем force_free_port подтверждён внутри контейнера"
+    else
+        echo "  [!!] ВНИМАНИЕ: force_free_port НЕ найден в /root/XiaoRGeek/xr_config.py внутри контейнера - патч не применился!"
+    fi
 fi
 
 echo "=== [1.5/4] Копирование видео-стримера ==="
