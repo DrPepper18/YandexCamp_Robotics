@@ -396,10 +396,6 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 145741348152743153, guid: 9d5970e14766a2246971a969eea7b635, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 2.39
-      objectReference: {fileID: 0}
     - target: {fileID: 7009598130726165244, guid: 9d5970e14766a2246971a969eea7b635, type: 3}
       propertyPath: m_Name
       value: EmptyPolygon (12)

@@ -6,10 +6,11 @@ using Unity.MLAgents.Sensors;
 /// <summary>
 /// Interceptor GFS-X AI agent. Glues the team scripts (TrackController,
 /// VirtualSensors, SimulatedYoloCamera) into one "brain":
-///   - collects 12 observations (order strictly matches the Practice 3 table,
+///   - collects 13 observations (order strictly matches the Practice 3 table,
 ///     minus odometry/heading/speed - the real GFS-X has none of those sensors -
-///     plus a 12th, toggleable, ground-truth ball distance with no real-hardware
-///     equivalent either - see gtBallDistanceObsEnabled),
+///     plus a 12th, toggleable, ground-truth ball distance (see
+///     gtBallDistanceObsEnabled) and a 13th, ground-truth ball angle - neither has
+///     a real-hardware equivalent, both are sim-only meta information),
 ///   - dispatches 3 continuous actions (no discrete action - the claw is autonomous,
 ///     driven directly by the GripperIR sensor, matching real hardware exactly),
 ///   - computes bounded rewards (all fixed amounts, no multipliers/percentages),
@@ -18,7 +19,7 @@ using Unity.MLAgents.Sensors;
 ///
 /// Behavior Parameters on the robot MUST match:
 ///   Behavior Name = GFSX_Brain (same as config.yaml)
-///   Vector Observation -> Space Size = 12, Stacked Vectors = 4
+///   Vector Observation -> Space Size = 13, Stacked Vectors = 4
 ///   Continuous Actions = 3, Discrete Branches = 0
 /// Leave the inspector "Max Step" = 0; this script caps the episode itself.
 /// </summary>
@@ -31,6 +32,8 @@ public class RobotBrain : Agent
     [SerializeField] private SimulatedYoloCamera yolo;
     [Tooltip("Practice 7 (HIL): optional real-YOLO receiver. When assigned AND its useYOLO is ON, vision comes from the real robot instead of the simulated camera")]
     [SerializeField] private RealVision realVision;
+    [Tooltip("Practice 7 (HIL): optional real ultrasonic/IR receiver (ROS /sensor/data). When assigned AND its useReal is ON, Obs01-04 come from the real robot instead of VirtualSensors' raycasts")]
+    [SerializeField] private RealSensors realSensors;
     [Tooltip("Practice 7 (HIL): optional bridge to the real robot over ROS. When assigned, every action step's gas/steer/camera command is published over ROS - but only while NOT connected to the ML-Agents trainer (IsTraining == false), so training runs never spam ROS topics with a nonexistent robot listening. This is what lets driving in Unity (WASD via Heuristic, or a running inference policy) actually move the physical GFS-X.")]
     [SerializeField] private ROSBridge rosBridge;
     [Tooltip("Optional CSV telemetry logger (sim-to-real diagnostics). When assigned and its own enableLogging is ON, one row is appended every decision step")]
@@ -91,6 +94,8 @@ public class RobotBrain : Agent
     [SerializeField] private float gtBallRetreatPenalty = 0.001f;
     [Tooltip("Normalization range (meters) for the gtBallApproachReward/gtBallRetreatPenalty progress term AND for the 12th observation (Obs12_GroundTruthBallDistance, see gtBallDistanceObsEnabled)")]
     [SerializeField] private float groundTruthBallDistanceMaxRange = 5f;
+    [Tooltip("Meta-reward, ground truth: rewards the ROBOT BODY facing the ball directly (Obs13_GroundTruthBallAngle, 0 = facing it dead-on), regardless of camera/servo alignment or visibility. Same formula shape as centeringRewardScale above: gtCenteringReward * (1-|angle|)^3, always active - NOT gated by ballVisible")]
+    [SerializeField] private float gtCenteringReward = 0.001f;
     [Tooltip("Scale for centeringRewardScale * (1-|ServoAngle|) * (1-|BallAngle|), only while the ball is visible")]
     [SerializeField] private float centeringRewardScale = 0.001f;
     [Tooltip("Flat penalty per step for driving backwards while the ball IS visible")]
@@ -129,6 +134,7 @@ public class RobotBrain : Agent
     [SerializeField] private float dbg_StandingStillApplied;
     [SerializeField] private float dbg_BallDistanceApplied;
     [SerializeField] private float dbg_GTBallApproachApplied;
+    [SerializeField] private float dbg_GTCenteringApplied;
     [SerializeField] private float dbg_CenteringApplied;
     [SerializeField] private float dbg_BackwardApplied;
     [SerializeField] private float dbg_SideIRCriticalApplied;
@@ -200,6 +206,7 @@ public class RobotBrain : Agent
     public float Obs10_HasBall           { get; private set; }
     public float Obs11_TimeSinceBallNorm { get; private set; }
     public float Obs12_GroundTruthBallDistance { get; private set; }
+    public float Obs13_GroundTruthBallAngle { get; private set; }
 
     public float ActGas       { get; private set; }
     public float ActSteer     { get; private set; }
@@ -225,6 +232,10 @@ public class RobotBrain : Agent
         if (realVision == null) realVision = GetComponent<RealVision>();
         if (realVision == null) realVision = GetComponentInChildren<RealVision>(true);
         if (realVision == null) realVision = FindFirstObjectByType<RealVision>();
+
+        if (realSensors == null) realSensors = GetComponent<RealSensors>();
+        if (realSensors == null) realSensors = GetComponentInChildren<RealSensors>(true);
+        if (realSensors == null) realSensors = FindFirstObjectByType<RealSensors>();
 
         if (diagnosticLogger == null) diagnosticLogger = GetComponent<DiagnosticLogger>();
         if (diagnosticLogger == null) diagnosticLogger = GetComponentInChildren<DiagnosticLogger>(true);
@@ -361,17 +372,21 @@ public class RobotBrain : Agent
 
     public override void CollectObservations(VectorSensor sensor)
     {
+        // 1-4. Ultrasonic + IR. Source: real robot (Practice 7 HIL, ROS /sensor/data)
+        // when RealSensors is assigned and switched on, otherwise VirtualSensors' raycasts.
+        bool useRealSensors = realSensors != null && realSensors.useReal;
+
         // 1. Ultrasonic: take the nearer side (0 = touching .. 1 = clear)
-        Obs01_Ultrasonic = sensors != null
-            ? Mathf.Min(sensors.UltrasonicLeft, sensors.UltrasonicRight)
-            : 1f;
+        Obs01_Ultrasonic = useRealSensors
+            ? realSensors.UltrasonicNorm
+            : (sensors != null ? Mathf.Min(sensors.UltrasonicLeft, sensors.UltrasonicRight) : 1f);
         if (randomizer != null)
             Obs01_Ultrasonic = randomizer.NoisySonar(Obs01_Ultrasonic, IsTraining);
 
         // 2-4. IR
-        Obs02_LeftIR    = sensors != null ? sensors.LeftIR : 0;
-        Obs03_RightIR   = sensors != null ? sensors.RightIR : 0;
-        Obs04_GripperIR = sensors != null ? sensors.GripperIR : 0;
+        Obs02_LeftIR    = useRealSensors ? realSensors.LeftIR    : (sensors != null ? sensors.LeftIR    : 0);
+        Obs03_RightIR   = useRealSensors ? realSensors.RightIR   : (sensors != null ? sensors.RightIR   : 0);
+        Obs04_GripperIR = useRealSensors ? realSensors.GripperIR : (sensors != null ? sensors.GripperIR : 0);
 
         // 5-8. Camera / YOLO. Source: real robot (Practice 7 HIL) when RealVision
         // is assigned and switched on, otherwise the simulated camera.
@@ -437,6 +452,21 @@ public class RobotBrain : Agent
         // either way.
         Obs12_GroundTruthBallDistance = gtBallDistanceObsEnabled ? Mathf.Clamp01(gtRawNorm) : 1f;
 
+        // 13. Ground truth (odometry) ball angle - signed angle between the ROBOT BODY's
+        // own forward direction and the direction to the ball, NOT the camera/servo (that's
+        // Obs05_BallAngle) and NOT gated by visibility. 0 = robot is facing the ball dead-on,
+        // +-1 = ball is directly behind. Normalized by 180 deg (the only possible max).
+        if (ball != null)
+        {
+            Vector3 toBall = ball.position - transform.position; toBall.y = 0f;
+            float signedAngleDeg = Vector3.SignedAngle(transform.forward, toBall, Vector3.up);
+            Obs13_GroundTruthBallAngle = Mathf.Clamp(signedAngleDeg / 180f, -1f, 1f);
+        }
+        else
+        {
+            Obs13_GroundTruthBallAngle = 0f;
+        }
+
         // --- Feed strictly in the Practice 3 table order ---
         sensor.AddObservation(Obs01_Ultrasonic);
         sensor.AddObservation(Obs02_LeftIR);
@@ -450,6 +480,7 @@ public class RobotBrain : Agent
         sensor.AddObservation(Obs10_HasBall);
         sensor.AddObservation(Obs11_TimeSinceBallNorm);
         sensor.AddObservation(Obs12_GroundTruthBallDistance);
+        sensor.AddObservation(Obs13_GroundTruthBallAngle);
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -489,15 +520,19 @@ public class RobotBrain : Agent
                         ? cameraServo.parent.InverseTransformDirection(Vector3.up)
                         : Vector3.up);
 
-        // ROSBridge.PublishCameraCmd expects an ABSOLUTE target pan angle in degrees
-        // (its own parameter is literally named "yaw") - it must be sent AFTER servoAngle
-        // is updated above, and must be servoAngle itself, not the raw per-tick camCmd
-        // (-1/0/+1). Sending camCmd directly told the real servo "go to ~1 degree" every
-        // tick instead of accumulating a real pan angle, which is why Q/E did nothing on
-        // the physical robot.
+        // ROSBridge.PublishCameraCmd must carry the ABSOLUTE target pan position,
+        // normalized to [-1, 1] - this is what the robot's own camera_callback expects
+        // (team1/unity_master_team1.py: "target = 90 - (yaw * 90)", i.e. yaw=-1 -> 180 deg,
+        // yaw=0 -> 90 deg (center), yaw=+1 -> 0 deg). Sending the raw per-tick camCmd
+        // (-1/0/+1, a RATE) made the servo barely twitch since it re-reads as "go to
+        // (roughly) 0 or 180 every tick" instead of a smooth target; sending servoAngle
+        // in raw degrees (previous attempt) overflowed the same formula and pinned the
+        // servo at 0 or 180. Dividing by maxServoAngle converts the already-accumulated
+        // absolute angle to the [-1, 1] range the robot-side formula actually expects.
         if (rosBridge != null && !IsTraining)
         {
-            rosBridge.PublishCameraCmd(servoAngle);
+            float normalizedServoAngle = maxServoAngle > 0f ? servoAngle / maxServoAngle : 0f;
+            rosBridge.PublishCameraCmd(normalizedServoAngle);
         }
 
         ComputeRewards(gas, steer, camCmd);
@@ -634,6 +669,17 @@ public class RobotBrain : Agent
         else
         {
             dbg_CenteringApplied = 0f;
+        }
+
+        // --- Ground truth (meta) centering: SAME formula shape as the visible-ball
+        // centering reward above, just on Obs13_GroundTruthBallAngle (robot BODY facing
+        // the ball) instead of the camera-perceived Obs05_BallAngle - and always active,
+        // NOT gated by ballVisible, since it's ground truth.
+        {
+            float c = Mathf.Abs(Obs13_GroundTruthBallAngle);
+            float gtCentering = gtCenteringReward * (1f - c) * (1f - c) * (1f - c);
+            Add(gtCentering);
+            dbg_GTCenteringApplied = gtCentering;
         }
 
         // --- Critical wall proximity: flat penalties, independent of movement and of each

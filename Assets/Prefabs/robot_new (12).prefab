@@ -1289,7 +1289,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Policies.BehaviorParameters
   m_BrainParameters:
-    VectorObservationSize: 12
+    VectorObservationSize: 13
     NumStackedVectorObservations: 4
     m_ActionSpec:
       m_NumContinuousActions: 3
@@ -1327,6 +1327,7 @@ MonoBehaviour:
   sensors: {fileID: 8083453346327391027}
   yolo: {fileID: 9050675598743419137}
   realVision: {fileID: 7177591095127666320}
+  realSensors: {fileID: 0}
   rosBridge: {fileID: 3196881193935745078}
   diagnosticLogger: {fileID: 0}
   randomizer: {fileID: 7630069793093056513}
@@ -1350,12 +1351,13 @@ MonoBehaviour:
   standingStillPenalty: 0.01
   ballDistanceReward: 0.2
   gtBallApproachReward: 30
-  gtBallRetreatPenalty: 0.4
+  gtBallRetreatPenalty: 0.5
   groundTruthBallDistanceMaxRange: 5
+  gtCenteringReward: 0.1
   centeringRewardScale: 0.2
   backwardVisiblePenalty: 0.2
   backwardBlindPenalty: 0.01
-  suddenMovePenalty: 0.1
+  suddenMovePenalty: 1
   suddenMoveSignificance: 0.1
   oscillationWindowDecisions: 12
   sideIRCriticalPenalty: 0.1
@@ -1371,6 +1373,7 @@ MonoBehaviour:
   dbg_StandingStillApplied: 0
   dbg_BallDistanceApplied: 0
   dbg_GTBallApproachApplied: 0
+  dbg_GTCenteringApplied: 0
   dbg_CenteringApplied: 0
   dbg_BackwardApplied: 0
   dbg_SideIRCriticalApplied: 0
