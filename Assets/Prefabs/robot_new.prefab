@@ -624,7 +624,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Policies.BehaviorParameters
   m_BrainParameters:
-    VectorObservationSize: 11
+    VectorObservationSize: 12
     NumStackedVectorObservations: 4
     m_ActionSpec:
       m_NumContinuousActions: 3
@@ -683,13 +683,13 @@ MonoBehaviour:
   missionMode: 0
   standingStillPenalty: 0.01
   ballDistanceReward: 0.2
-  gtBallApproachReward: 0
-  gtBallRetreatPenalty: 0
+  gtBallApproachReward: 30
+  gtBallRetreatPenalty: 0.04
   groundTruthBallDistanceMaxRange: 5
   centeringRewardScale: 0.2
   backwardVisiblePenalty: 0.2
-  backwardBlindPenalty: 0.001
-  suddenMovePenalty: 1.5
+  backwardBlindPenalty: 0.1
+  suddenMovePenalty: 0.01
   suddenMoveSignificance: 0.1
   oscillationWindowDecisions: 12
   sideIRCriticalPenalty: 0.1
@@ -716,6 +716,7 @@ MonoBehaviour:
   dbg_TimeoutPenaltyApplied: 0
   dbg_BallBumperApplied: 0
   timeSinceBallCap: 10
+  gtBallDistanceObsEnabled: 1
 --- !u!114 &8517436835133471032
 MonoBehaviour:
   m_ObjectHideFlags: 0

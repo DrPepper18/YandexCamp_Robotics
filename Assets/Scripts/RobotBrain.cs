@@ -6,8 +6,10 @@ using Unity.MLAgents.Sensors;
 /// <summary>
 /// Interceptor GFS-X AI agent. Glues the team scripts (TrackController,
 /// VirtualSensors, SimulatedYoloCamera) into one "brain":
-///   - collects 11 observations (order strictly matches the Practice 3 table,
-///     minus odometry/heading/speed - the real GFS-X has none of those sensors),
+///   - collects 12 observations (order strictly matches the Practice 3 table,
+///     minus odometry/heading/speed - the real GFS-X has none of those sensors -
+///     plus a 12th, toggleable, ground-truth ball distance with no real-hardware
+///     equivalent either - see gtBallDistanceObsEnabled),
 ///   - dispatches 3 continuous actions (no discrete action - the claw is autonomous,
 ///     driven directly by the GripperIR sensor, matching real hardware exactly),
 ///   - computes bounded rewards (all fixed amounts, no multipliers/percentages),
@@ -16,7 +18,7 @@ using Unity.MLAgents.Sensors;
 ///
 /// Behavior Parameters on the robot MUST match:
 ///   Behavior Name = GFSX_Brain (same as config.yaml)
-///   Vector Observation -> Space Size = 11, Stacked Vectors = 4
+///   Vector Observation -> Space Size = 12, Stacked Vectors = 4
 ///   Continuous Actions = 3, Discrete Branches = 0
 /// Leave the inspector "Max Step" = 0; this script caps the episode itself.
 /// </summary>
@@ -49,6 +51,8 @@ public class RobotBrain : Agent
     [Header("Target and arena")]
     [SerializeField] private Transform ball;
     [SerializeField] private string ballTag = "TargetBall";
+    [Tooltip("The claw's HoldPoint on the robot prefab - the ground-truth ball-distance meta reward/observation is measured from here, not from the robot's root/model center. Auto-found by name if left empty")]
+    [SerializeField] private Transform holdPoint;
     [Tooltip("Optional arena center. If empty, world origin (0,0,0) is used")]
     [SerializeField] private Transform arenaCenter;
 
@@ -85,7 +89,7 @@ public class RobotBrain : Agent
     [SerializeField] private float gtBallApproachReward = 0.001f;
     [Tooltip("Meta-reward, ground truth: flat penalty applied instead of gtBallApproachReward when the robot's true distance to the ball increased since the last decision (moving away). Independently tunable from gtBallApproachReward - not just its negative")]
     [SerializeField] private float gtBallRetreatPenalty = 0.001f;
-    [Tooltip("Normalization range (meters) used only internally to scale the gtBallApproachReward/gtBallRetreatPenalty progress term - never exposed as an observation")]
+    [Tooltip("Normalization range (meters) for the gtBallApproachReward/gtBallRetreatPenalty progress term AND for the 12th observation (Obs12_GroundTruthBallDistance, see gtBallDistanceObsEnabled)")]
     [SerializeField] private float groundTruthBallDistanceMaxRange = 5f;
     [Tooltip("Scale for centeringRewardScale * (1-|ServoAngle|) * (1-|BallAngle|), only while the ball is visible")]
     [SerializeField] private float centeringRewardScale = 0.001f;
@@ -138,6 +142,8 @@ public class RobotBrain : Agent
 
     [Header("Observation normalization")]
     [SerializeField] private float timeSinceBallCap = 10f;  // s
+    [Tooltip("12th observation: ground truth (ODOMETRY - no real-hardware equivalent) distance to the ball, Clamp01(distance/groundTruthBallDistanceMaxRange). NOT gated by camera visibility, unlike Obs06_BallDistance. Toggle off to fall back to a neutral 1 (far) placeholder - the observation slot always exists (Space Size stays 12) either way, only its content changes")]
+    [SerializeField] private bool gtBallDistanceObsEnabled = true;
 
     // ---- Rigidbody / start poses ----
     private Rigidbody rb;
@@ -193,6 +199,7 @@ public class RobotBrain : Agent
     public float Obs09_ServoAngleNorm    { get; private set; }
     public float Obs10_HasBall           { get; private set; }
     public float Obs11_TimeSinceBallNorm { get; private set; }
+    public float Obs12_GroundTruthBallDistance { get; private set; }
 
     public float ActGas       { get; private set; }
     public float ActSteer     { get; private set; }
@@ -222,6 +229,8 @@ public class RobotBrain : Agent
         if (diagnosticLogger == null) diagnosticLogger = GetComponent<DiagnosticLogger>();
         if (diagnosticLogger == null) diagnosticLogger = GetComponentInChildren<DiagnosticLogger>(true);
         if (diagnosticLogger == null) diagnosticLogger = FindFirstObjectByType<DiagnosticLogger>();
+
+        if (holdPoint == null) holdPoint = FindDeep(transform, "HoldPoint");
 
         startPos = spawnPoint != null ? spawnPoint.position : transform.position;
         startRot = spawnPoint != null ? spawnPoint.rotation : transform.rotation;
@@ -391,17 +400,17 @@ public class RobotBrain : Agent
         // 11. Time since last detection
         Obs11_TimeSinceBallNorm = Mathf.Clamp01(timeSinceBall / timeSinceBallCap);
 
-        // Ground truth (meta) ball-approach reward: computed HERE, not in ComputeRewards,
+        // Ground truth ball distance: also the basis of the gtBallApproachReward/
+        // gtBallRetreatPenalty meta-reward below, computed HERE (not in ComputeRewards)
         // because CollectObservations is the only method that runs exactly once per real
         // ML-Agents DECISION. With DecisionPeriod > 1 and TakeActionsBetweenDecisions,
         // OnActionReceived/ComputeRewards fires every physics tick, re-using the same
         // cached values on the ticks in between real decisions - comparing distance against
         // itself on those ticks would make this fire in an erratic, mostly-empty pattern.
-        // This distance is NEVER added to the sensor - this branch stays at 11 observations.
         float gtRawNorm;
         if (ball != null)
         {
-            Vector3 a = transform.position; a.y = 0f;
+            Vector3 a = holdPoint != null ? holdPoint.position : transform.position; a.y = 0f;
             Vector3 b = ball.position;       b.y = 0f;
             gtRawNorm = Vector3.Distance(a, b) / groundTruthBallDistanceMaxRange;
         }
@@ -422,6 +431,12 @@ public class RobotBrain : Agent
         }
         prevGtBallDistRaw = gtRawNorm;
 
+        // 12. Ground truth (odometry) ball distance - NOT gated by camera visibility,
+        // unlike Obs06_BallDistance. Toggleable: when disabled, falls back to a neutral
+        // 1 (far) placeholder, but the slot itself is always fed - Space Size stays 12
+        // either way.
+        Obs12_GroundTruthBallDistance = gtBallDistanceObsEnabled ? Mathf.Clamp01(gtRawNorm) : 1f;
+
         // --- Feed strictly in the Practice 3 table order ---
         sensor.AddObservation(Obs01_Ultrasonic);
         sensor.AddObservation(Obs02_LeftIR);
@@ -434,6 +449,7 @@ public class RobotBrain : Agent
         sensor.AddObservation(Obs09_ServoAngleNorm);
         sensor.AddObservation(Obs10_HasBall);
         sensor.AddObservation(Obs11_TimeSinceBallNorm);
+        sensor.AddObservation(Obs12_GroundTruthBallDistance);
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -734,6 +750,18 @@ public class RobotBrain : Agent
 
     // ---- helpers ----
     private void Add(float r) { AddReward(r); StepReward += r; }
+
+    /// <summary>Recursive child search by name (Transform.Find only checks direct children).</summary>
+    private static Transform FindDeep(Transform root, string name)
+    {
+        if (root.name == name) return root;
+        foreach (Transform child in root)
+        {
+            Transform found = FindDeep(child, name);
+            if (found != null) return found;
+        }
+        return null;
+    }
 
     // ---- Editor visualization ----
     private void OnDrawGizmos()
