@@ -52,18 +52,23 @@ public class RobotBrain : Agent
     [Tooltip("Optional arena center. If empty, world origin (0,0,0) is used")]
     [SerializeField] private Transform arenaCenter;
 
-    [Header("Ball spawn zone (competition layout)")]
-    [Tooltip("If assigned (needs a Collider, e.g. the 'Finish' marker), the ball spawns at a random point inside its bounds instead of the forward/side band below")]
+    [Header("Ball spawn zone (rectangle centered on Finish - independent of the robot)")]
+    [Tooltip("The ball always spawns at a random point in a rectangle centered on THIS Transform's position, using its own local right/forward axes. Required for ball spawning - there is no robot-relative fallback anymore")]
     [SerializeField] private Transform finishArea;
-    [Tooltip("Ball spawns in a band AHEAD of the robot's start direction: from minForward to maxForward meters in front of the robot's spawn point (used only when finishArea is empty)")]
-    [SerializeField] private float ballMinForward = 2.0f;
-    [SerializeField] private float ballMaxForward = 3.2f;
-    [Tooltip("Half-width of the ball spawn band sideways from the robot's start axis")]
-    [SerializeField] private float ballHalfWidth = 1.5f;
-    [Tooltip("Randomize the robot's start position sideways by +- this many meters along its spawn side")]
-    [SerializeField] private float robotSpawnJitter = 0.5f;
-    [Tooltip("Robot start pose. If empty, the scene-start pose is used")]
+    [Tooltip("Half-width (radius) of the ball spawn rectangle along Finish's local RIGHT axis: spawn range on that axis = center +- this")]
+    [SerializeField] private float ballSpawnHalfWidth = 1.5f;
+    [Tooltip("Full length of the ball spawn rectangle along Finish's local FORWARD axis, centered on Finish: spawn range on that axis = center +- length/2")]
+    [SerializeField] private float ballSpawnLength = 3f;
+
+    [Header("Robot spawn zone (rectangle centered on an explicit spawn point)")]
+    [Tooltip("Explicit reference point/orientation the robot spawn rectangle is measured from. If empty, the scene-start pose is used")]
     [SerializeField] private Transform spawnPoint;
+    [Tooltip("Half-width (radius) of the robot spawn rectangle along spawnPoint's local RIGHT axis: spawn range on that axis = center +- this")]
+    [SerializeField] private float robotSpawnHalfWidth = 0.5f;
+    [Tooltip("Full length of the robot spawn rectangle along spawnPoint's local FORWARD axis, centered on spawnPoint: spawn range on that axis = center +- length/2")]
+    [SerializeField] private float robotSpawnLength = 0f;
+    [Tooltip("Draw the ball/robot spawn rectangles as gizmos in the Scene view (yellow = ball around Finish, cyan = robot around spawnPoint)")]
+    [SerializeField] private bool drawSpawnGizmos = true;
 
     [Header("Episode")]
     [Tooltip("Hard cap on decision steps per episode. Guarantees the episode always resets.")]
@@ -76,6 +81,12 @@ public class RobotBrain : Agent
     [SerializeField] private float standingStillPenalty = 0.001f;
     [Tooltip("ballDistanceReward * (1-|BallDistance|), rewards being close to a VISIBLE ball regardless of whether this step happened to close distance")]
     [SerializeField] private float ballDistanceReward = 0.1f;
+    [Tooltip("Meta-reward, ground truth (not fed into observations - this branch stays at 11 obs). While the robot's true distance to the ball is actually shrinking vs the last decision, reward = gtBallApproachReward * (prevDist - currDist). NOT gated by camera visibility - gives a navigation gradient even while the ball is out of view. See gtBallRetreatPenalty for the opposite case")]
+    [SerializeField] private float gtBallApproachReward = 0.001f;
+    [Tooltip("Meta-reward, ground truth: flat penalty applied instead of gtBallApproachReward when the robot's true distance to the ball increased since the last decision (moving away). Independently tunable from gtBallApproachReward - not just its negative")]
+    [SerializeField] private float gtBallRetreatPenalty = 0.001f;
+    [Tooltip("Normalization range (meters) used only internally to scale the gtBallApproachReward/gtBallRetreatPenalty progress term - never exposed as an observation")]
+    [SerializeField] private float groundTruthBallDistanceMaxRange = 5f;
     [Tooltip("Scale for centeringRewardScale * (1-|ServoAngle|) * (1-|BallAngle|), only while the ball is visible")]
     [SerializeField] private float centeringRewardScale = 0.001f;
     [Tooltip("Flat penalty per step for driving backwards while the ball IS visible")]
@@ -113,6 +124,7 @@ public class RobotBrain : Agent
     [Header("Debug - live reward breakdown (read-only, updates every step in Play mode)")]
     [SerializeField] private float dbg_StandingStillApplied;
     [SerializeField] private float dbg_BallDistanceApplied;
+    [SerializeField] private float dbg_GTBallApproachApplied;
     [SerializeField] private float dbg_CenteringApplied;
     [SerializeField] private float dbg_BackwardApplied;
     [SerializeField] private float dbg_SideIRCriticalApplied;
@@ -154,6 +166,17 @@ public class RobotBrain : Agent
     private Vector3 episodeStartPos;
     private Vector3 lastLogPos;
     private float lastLogTime;
+
+    // GT ball distance (unclamped, normalized by groundTruthBallDistanceMaxRange) as of the
+    // previous DECISION, purely for the gtBallApproachReward/gtBallRetreatPenalty meta-reward -
+    // never fed into observations. -1 = no baseline yet (first decision after reset).
+    // pendingGtBallReward is staged once per decision in CollectObservations (the only method
+    // that runs exactly once per real ML-Agents decision - OnActionReceived/ComputeRewards
+    // fires every physics tick under TakeActionsBetweenDecisions, which would otherwise
+    // compare a stale distance against itself on the ticks in between) and consumed exactly
+    // once in ComputeRewards.
+    private float prevGtBallDistRaw = -1f;
+    private float pendingGtBallReward;
 
     /// <summary>True when connected to the Python trainer (used later for domain randomization / ROSBridge gating).</summary>
     public bool IsTraining => Academy.Instance.IsCommunicatorOn;
@@ -230,6 +253,8 @@ public class RobotBrain : Agent
             episodeStartPos = transform.position;
             lastLogPos = transform.position;
             lastLogTime = Time.time;
+            prevGtBallDistRaw = -1f;
+            pendingGtBallReward = 0f;
             return;
         }
 
@@ -237,13 +262,14 @@ public class RobotBrain : Agent
         // so the ball's overlap check sees the new obstacle positions
         if (obstacleRandomizer != null) obstacleRandomizer.Shuffle();
 
-        // Reset robot: back to spawn, with sideways jitter along its start side.
+        // Reset robot: random point in a rectangle centered on startPos/startRot (from
+        // spawnPoint - see Initialize()), using its own local right/forward axes.
         // Teleport through the rigidbody so PhysX state matches the new pose.
         rb.linearVelocity = Vector3.zero;   // Unity < 6: rb.velocity
         rb.angularVelocity = Vector3.zero;
-        Vector3 spawn = startPos;
-        if (robotSpawnJitter > 0f)
-            spawn += (startRot * Vector3.right) * Random.Range(-robotSpawnJitter, robotSpawnJitter);
+        Vector3 spawn = startPos
+            + (startRot * Vector3.right)   * Random.Range(-robotSpawnHalfWidth, robotSpawnHalfWidth)
+            + (startRot * Vector3.forward) * Random.Range(-robotSpawnLength * 0.5f, robotSpawnLength * 0.5f);
         rb.position = spawn;
         rb.rotation = startRot;
         transform.SetPositionAndRotation(spawn, startRot);
@@ -251,20 +277,26 @@ public class RobotBrain : Agent
         episodeStartPos = spawn;
         lastLogPos = spawn;
         lastLogTime = Time.time;
+        prevGtBallDistRaw = -1f;
+        pendingGtBallReward = 0f;
 
         // Reset camera servo
         servoAngle = 0f;
         if (cameraServo != null) cameraServo.localRotation = cameraServoBase;
 
-        // Ball spawn: random point inside finishArea's bounds if assigned, otherwise the
-        // old forward/side band ahead of the robot's start direction (competition layout).
-        if (ball != null)
+        // Ball spawn: random point in a rectangle centered on the "Finish" Transform's
+        // OWN position, using ITS OWN local right/forward axes - entirely independent of
+        // the robot (no more forward/side band relative to the robot's start pose).
+        if (ball != null && finishArea != null)
         {
-            Vector3 fwd  = startRot * Vector3.forward;
-            Vector3 side = startRot * Vector3.right;
+            Vector3 center = finishArea.position;
+            Vector3 side   = finishArea.right;
+            Vector3 fwd    = finishArea.forward;
             float ballR = ball.localScale.x * 0.5f + 0.02f;
 
-            Collider finishCollider = finishArea != null ? finishArea.GetComponent<Collider>() : null;
+            // Kept only to exclude the Finish floor marker's own trigger collider from the
+            // "solid" check below - its bounds are no longer used for spawn positioning.
+            Collider finishCollider = finishArea.GetComponent<Collider>();
 
             Vector3 p = ball.position; int guard = 0;
             bool ok = false;
@@ -272,28 +304,20 @@ public class RobotBrain : Agent
             {
                 guard++;
 
-                if (finishCollider != null)
-                {
-                    Bounds fb = finishCollider.bounds;
-                    p = new Vector3(Random.Range(fb.min.x, fb.max.x), ballStartY, Random.Range(fb.min.z, fb.max.z));
-                }
-                else
-                {
-                    p = startPos
-                      + fwd  * Random.Range(ballMinForward, ballMaxForward)
-                      + side * Random.Range(-ballHalfWidth, ballHalfWidth);
-                    p.y = ballStartY;
-                    // No arena-bounds clamp here anymore - physical walls contain the
-                    // arena, so an artificial software boundary is redundant.
-                }
+                p = center
+                  + side * Random.Range(-ballSpawnHalfWidth, ballSpawnHalfWidth)
+                  + fwd  * Random.Range(-ballSpawnLength * 0.5f, ballSpawnLength * 0.5f);
+                p.y = ballStartY;
+                // No arena-bounds clamp here anymore - physical walls contain the
+                // arena, so an artificial software boundary is redundant.
 
                 // not inside anything solid: allow only the floor (arenaCenter), the
                 // finish marker itself, and the ball itself
                 ok = true;
                 foreach (var col in Physics.OverlapSphere(p, ballR))
                 {
-                    if (ball != null && col.transform == ball) continue;              // the ball itself
-                    if (finishCollider != null && col == finishCollider) continue;    // the finish floor marker
+                    if (col.transform == ball) continue;                              // the ball itself
+                    if (finishCollider != null && col == finishCollider) continue;     // the finish floor marker
                     if (arenaCenter != null &&
                         (col.transform == arenaCenter || col.transform.IsChildOf(arenaCenter)))
                         continue;                                                     // the floor
@@ -366,6 +390,37 @@ public class RobotBrain : Agent
 
         // 11. Time since last detection
         Obs11_TimeSinceBallNorm = Mathf.Clamp01(timeSinceBall / timeSinceBallCap);
+
+        // Ground truth (meta) ball-approach reward: computed HERE, not in ComputeRewards,
+        // because CollectObservations is the only method that runs exactly once per real
+        // ML-Agents DECISION. With DecisionPeriod > 1 and TakeActionsBetweenDecisions,
+        // OnActionReceived/ComputeRewards fires every physics tick, re-using the same
+        // cached values on the ticks in between real decisions - comparing distance against
+        // itself on those ticks would make this fire in an erratic, mostly-empty pattern.
+        // This distance is NEVER added to the sensor - this branch stays at 11 observations.
+        float gtRawNorm;
+        if (ball != null)
+        {
+            Vector3 a = transform.position; a.y = 0f;
+            Vector3 b = ball.position;       b.y = 0f;
+            gtRawNorm = Vector3.Distance(a, b) / groundTruthBallDistanceMaxRange;
+        }
+        else
+        {
+            gtRawNorm = 1f;
+        }
+        if (prevGtBallDistRaw >= 0f)
+        {
+            float delta = prevGtBallDistRaw - gtRawNorm;
+            if (delta > 0f)      pendingGtBallReward = gtBallApproachReward * delta;   // approaching
+            else if (delta < 0f) pendingGtBallReward = -gtBallRetreatPenalty;          // retreating
+            else                 pendingGtBallReward = 0f;
+        }
+        else
+        {
+            pendingGtBallReward = 0f;
+        }
+        prevGtBallDistRaw = gtRawNorm;
 
         // --- Feed strictly in the Practice 3 table order ---
         sensor.AddObservation(Obs01_Ultrasonic);
@@ -543,12 +598,20 @@ public class RobotBrain : Agent
             dbg_BallDistanceApplied = 0f;
         }
 
+        // --- Ground truth (meta) ball-approach reward - the comparison itself already
+        // happened once this decision in CollectObservations (see the comment there); here
+        // we just apply-and-consume the staged value exactly once. Always active, NOT
+        // gated by ballVisible.
+        Add(pendingGtBallReward);
+        dbg_GTBallApproachApplied = pendingGtBallReward;
+        pendingGtBallReward = 0f;
+
         // --- Centering: flat-scaled formula, only while visible ---
         if (ballVisible)
         {
             float a = Mathf.Abs(Obs09_ServoAngleNorm);
             float b = Mathf.Abs(Obs05_BallAngle);
-            float centering = centeringRewardScale * (1f - a * a) * (1f - b * b);
+            float centering = centeringRewardScale * (1f - a) * (1f - b) * (1f - a) * (1f - b) * (1f - a) * (1f - b);
             Add(centering);
             dbg_CenteringApplied = centering;
         }
@@ -671,4 +734,40 @@ public class RobotBrain : Agent
 
     // ---- helpers ----
     private void Add(float r) { AddReward(r); StepReward += r; }
+
+    // ---- Editor visualization ----
+    private void OnDrawGizmos()
+    {
+        if (!drawSpawnGizmos) return;
+
+        // Ball spawn rectangle: centered on Finish's own position/axes.
+        DrawSpawnRect(finishArea, ballSpawnHalfWidth, ballSpawnLength, Color.yellow);
+
+        // Robot spawn rectangle: centered on spawnPoint, or this transform if unset -
+        // mirrors the startPos/startRot fallback in Initialize() so the gizmo matches
+        // what actually happens in Play mode.
+        Transform robotRef = spawnPoint != null ? spawnPoint : transform;
+        DrawSpawnRect(robotRef, robotSpawnHalfWidth, robotSpawnLength, Color.cyan);
+    }
+
+    private static void DrawSpawnRect(Transform reference, float halfWidth, float length, Color color)
+    {
+        if (reference == null) return;
+
+        Vector3 center = reference.position;
+        Vector3 halfSide = reference.right * halfWidth;
+        Vector3 halfFwd = reference.forward * (length * 0.5f);
+
+        Vector3 p1 = center + halfSide + halfFwd;
+        Vector3 p2 = center - halfSide + halfFwd;
+        Vector3 p3 = center - halfSide - halfFwd;
+        Vector3 p4 = center + halfSide - halfFwd;
+
+        Gizmos.color = color;
+        Gizmos.DrawLine(p1, p2);
+        Gizmos.DrawLine(p2, p3);
+        Gizmos.DrawLine(p3, p4);
+        Gizmos.DrawLine(p4, p1);
+        Gizmos.DrawLine(center - halfFwd, center + halfFwd); // center line - marks the "forward" axis
+    }
 }

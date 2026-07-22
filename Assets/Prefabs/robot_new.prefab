@@ -673,19 +673,23 @@ MonoBehaviour:
   ballTag: TargetBall
   arenaCenter: {fileID: 0}
   finishArea: {fileID: 0}
-  ballMinForward: 3
-  ballMaxForward: 4.2
-  ballHalfWidth: 3
-  robotSpawnJitter: 1
+  ballSpawnHalfWidth: 1.7
+  ballSpawnLength: 1.1
   spawnPoint: {fileID: 0}
+  robotSpawnHalfWidth: 1
+  robotSpawnLength: 0.5
+  drawSpawnGizmos: 1
   maxEpisodeSteps: 4000
   missionMode: 0
   standingStillPenalty: 0.01
-  ballDistanceReward: 0.15
-  centeringRewardScale: 0.1
+  ballDistanceReward: 0.2
+  gtBallApproachReward: 0
+  gtBallRetreatPenalty: 0
+  groundTruthBallDistanceMaxRange: 5
+  centeringRewardScale: 0.2
   backwardVisiblePenalty: 0.2
   backwardBlindPenalty: 0.001
-  suddenMovePenalty: 3
+  suddenMovePenalty: 1.5
   suddenMoveSignificance: 0.1
   oscillationWindowDecisions: 12
   sideIRCriticalPenalty: 0.1
@@ -695,11 +699,12 @@ MonoBehaviour:
   gripHoldMaxDecisions: 20
   gripHoldTickBonus: 5
   gripLostPenalty: 5
-  successEpisodeReward: 30
-  timeoutPenalty: 30
+  successEpisodeReward: 100
+  timeoutPenalty: 100
   ballBumperPenalty: 1
   dbg_StandingStillApplied: 0
   dbg_BallDistanceApplied: 0
+  dbg_GTBallApproachApplied: 0
   dbg_CenteringApplied: 0
   dbg_BackwardApplied: 0
   dbg_SideIRCriticalApplied: 0
@@ -1114,7 +1119,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.0012970055, y: 0.0019361374, z: 0.0011024908, w: 0.9999967}
   m_LocalPosition: {x: 2.439, y: 0.382, z: 0.026}
-  m_LocalScale: {x: 2.5247471, y: 1.0004, z: 1}
+  m_LocalScale: {x: 2.5247471, y: 1.0004, z: 1.6585}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 17563228797856982}
