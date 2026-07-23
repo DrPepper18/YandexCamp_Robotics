@@ -1,5 +1,4 @@
 
-## Требования
 
 - **Unity 6000.0.23f1** (или та, что у тебя — уточни в `ProjectSettings/ProjectVersion.txt`)
 - Git
