@@ -94,7 +94,7 @@ public class RobotBrain : Agent
     [SerializeField] private float gtBallRetreatPenalty = 0.001f;
     [Tooltip("Normalization range (meters) for the gtBallApproachReward/gtBallRetreatPenalty progress term AND for the 12th observation (Obs12_GroundTruthBallDistance, see gtBallDistanceObsEnabled)")]
     [SerializeField] private float groundTruthBallDistanceMaxRange = 5f;
-    [Tooltip("Meta-reward, ground truth: rewards the ROBOT BODY facing the ball directly (Obs13_GroundTruthBallAngle, 0 = facing it dead-on), regardless of camera/servo alignment or visibility. Same formula shape as centeringRewardScale above: gtCenteringReward * (1-|angle|)^3, always active - NOT gated by ballVisible")]
+    [Tooltip("Meta-reward, ground truth: rewards the servo AND the robot BODY both facing the ball directly (Obs13_GroundTruthBallAngle, 0 = facing it dead-on), regardless of camera visibility. Same formula shape as centeringRewardScale above, now with both terms: gtCenteringReward * (1-|servo|)^3 * (1-|angle|)^3, always active - NOT gated by ballVisible")]
     [SerializeField] private float gtCenteringReward = 0.001f;
     [Tooltip("Scale for centeringRewardScale * (1-|ServoAngle|) * (1-|BallAngle|), only while the ball is visible")]
     [SerializeField] private float centeringRewardScale = 0.001f;
@@ -451,7 +451,6 @@ public class RobotBrain : Agent
         // 1 (far) placeholder, but the slot itself is always fed - Space Size stays 12
         // either way.
         Obs12_GroundTruthBallDistance = gtBallDistanceObsEnabled ? Mathf.Clamp01(gtRawNorm) : 1f;
-        Obs12_GroundTruthBallDistance = 0f;
         // 13. Ground truth (odometry) ball angle - signed angle between the ROBOT BODY's
         // own forward direction and the direction to the ball, NOT the camera/servo (that's
         // Obs05_BallAngle) and NOT gated by visibility. 0 = robot is facing the ball dead-on,
@@ -460,7 +459,7 @@ public class RobotBrain : Agent
         {
             Vector3 toBall = ball.position - transform.position; toBall.y = 0f;
             float signedAngleDeg = Vector3.SignedAngle(transform.forward, toBall, Vector3.up);
-            Obs13_GroundTruthBallAngle = Mathf.Clamp(signedAngleDeg / 180f, -1f, 1f) * 0f;
+            Obs13_GroundTruthBallAngle = Mathf.Clamp(signedAngleDeg / 180f, -1f, 1f);
         }
         else
         {
@@ -673,12 +672,14 @@ public class RobotBrain : Agent
         }
 
         // --- Ground truth (meta) centering: SAME formula shape as the visible-ball
-        // centering reward above, just on Obs13_GroundTruthBallAngle (robot BODY facing
-        // the ball) instead of the camera-perceived Obs05_BallAngle - and always active,
-        // NOT gated by ballVisible, since it's ground truth.
+        // centering reward above (servo alignment term AND ball-angle term), just using
+        // Obs13_GroundTruthBallAngle (robot BODY facing the ball) instead of the
+        // camera-perceived Obs05_BallAngle - and always active, NOT gated by ballVisible,
+        // since it's ground truth.
         {
+            float a = Mathf.Abs(Obs09_ServoAngleNorm);
             float c = Mathf.Abs(Obs13_GroundTruthBallAngle);
-            float gtCentering = gtCenteringReward * (1f - c) * (1f - c) * (1f - c);
+            float gtCentering = gtCenteringReward * (1f - a) * (1f - c) * (1f - a) * (1f - c) * (1f - a) * (1f - c);
             Add(gtCentering);
             dbg_GTCenteringApplied = gtCentering;
         }
