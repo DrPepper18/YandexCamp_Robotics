@@ -1349,44 +1349,12 @@ MonoBehaviour:
   drawSpawnGizmos: 1
   maxEpisodeSteps: 3000
   missionMode: 0
-  standingStillPenalty: 0.01
-  ballDistanceReward: 0.2
-  gtBallApproachReward: 0
-  gtBallRetreatPenalty: 0
-  groundTruthBallDistanceMaxRange: 5
-  gtCenteringReward: 0
-  centeringRewardScale: 0.2
-  backwardVisiblePenalty: 0.2
-  backwardBlindPenalty: 0.01
-  suddenMovePenalty: 1
-  suddenMoveSignificance: 0.1
-  oscillationWindowDecisions: 12
-  sideIRCriticalPenalty: 0.1
-  ultrasonicCriticalPenalty: 0.1
-  ultrasonicCriticalThreshold: 0.2
-  gripRewardIntervalDecisions: 5
-  gripHoldMaxDecisions: 20
-  gripHoldTickBonus: 5
-  gripLostPenalty: 5
-  successEpisodeReward: 100
-  timeoutPenalty: 100
-  ballBumperPenalty: 1
-  dbg_StandingStillApplied: 0
-  dbg_BallDistanceApplied: 0
-  dbg_GTBallApproachApplied: 0
-  dbg_GTCenteringApplied: 0
-  dbg_CenteringApplied: 0
-  dbg_BackwardApplied: 0
-  dbg_SideIRCriticalApplied: 0
-  dbg_UltrasonicCriticalApplied: 0
-  dbg_SuddenMoveApplied: 0
-  dbg_GripHoldBonusApplied: 0
-  dbg_GripLostApplied: 0
-  dbg_SuccessEpisodeApplied: 0
-  dbg_TimeoutPenaltyApplied: 0
-  dbg_BallBumperApplied: 0
-  timeSinceBallCap: 10
-  gtBallDistanceObsEnabled: 1
+  gasReward: 1
+  steerPenalty: 1
+  cameraPenalty: 1
+  dbg_GasApplied: 0
+  dbg_SteerPenaltyApplied: 0
+  dbg_CameraPenaltyApplied: 0
 --- !u!114 &6536386532545001608
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1502,7 +1470,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5551640423223017275}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ef569935d2ac2fb4788db04ad1f30803, type: 3}
   m_Name: 
