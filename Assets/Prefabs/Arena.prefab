@@ -530,6 +530,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 3775472039168778032, guid: ad3076f4513f3eb41b8ad5610f080a92, type: 3}
+      propertyPath: colliderSize.z
+      value: 0.10000001
+      objectReference: {fileID: 0}
     - target: {fileID: 7978793950017744948, guid: ad3076f4513f3eb41b8ad5610f080a92, type: 3}
       propertyPath: m_Name
       value: Ball
@@ -841,7 +845,7 @@ PrefabInstance:
     - target: {fileID: 4804638231615729543, guid: 556c8dbf90cca5441b44d8875d73bdd2, type: 3}
       propertyPath: m_Model
       value: 
-      objectReference: {fileID: 5022602860645237092, guid: 3f7acd3e7ad28354c8c691d2254cc218, type: 3}
+      objectReference: {fileID: 5022602860645237092, guid: 4f1c013ba85e1b842831e3f25509c93d, type: 3}
     - target: {fileID: 4804638231615729543, guid: 556c8dbf90cca5441b44d8875d73bdd2, type: 3}
       propertyPath: m_BehaviorType
       value: 2

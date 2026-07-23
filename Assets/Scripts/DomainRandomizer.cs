@@ -21,20 +21,12 @@ public class DomainRandomizer : MonoBehaviour
     [Header("Диапазоны моторов")]
     [SerializeField] private Vector2 moveSpeedRange = new Vector2(0.5f, 0.65f);
     [SerializeField] private Vector2 turnSpeedRange = new Vector2(100f, 140f);
-    [SerializeField] private Vector2 motorDeadzoneRange = new Vector2(8f, 12f);
-    [SerializeField] private Vector2 minMotorPwmRange = new Vector2(30f, 40f);
-    [SerializeField] private Vector2 maxPwmStepRange = new Vector2(12f, 18f);
-    [SerializeField] private Vector2 speedToPwmRange = new Vector2(180f, 220f);
 
     [Header("Диапазоны датчиков")]
     [SerializeField] private Vector2 ultrasonicMaxDistRange = new Vector2(1.8f, 2.2f);
     [SerializeField] private Vector2 ultrasonicConeAngleRange = new Vector2(25f, 35f);
     [SerializeField] private Vector2 irObstacleDistRange = new Vector2(0.12f, 0.18f);
     [SerializeField] private Vector2 gripperIRDistRange = new Vector2(0.06f, 0.10f);
-
-    [Header("Диапазоны камеры")]
-    [SerializeField] private Vector2 cameraMaxDistRange = new Vector2(1.8f, 2.2f);
-    [SerializeField] private Vector2 cameraFOVRange = new Vector2(35f, 45f);
 
     [Header("Шум наблюдений (σ)")]
     [SerializeField] private float ultrasonicNoiseStd = 0.03f;   // добавляется к нормализованному расстоянию

@@ -2231,27 +2231,6 @@ MonoBehaviour:
   randomizeBallOnReset: 1
   ballSpawnMinDistance: 0.5
   ballSpawnMaxDistance: 1.5
-  actionRatePenaltyScale: 0.001
-  centeringBonusScale: 0.01
-  wallProximityPenalty: 0.002
-  successReward: 10
-  idlePenalty: 0.001
-  reversePenalty: 0.001
-  frontWallPenalty: 0.01
-  outOfBoundsPenalty: -2
-  requiredHoldSteps: 50
-  holdSuccessReward: 1
-  holdDropPenalty: -1
-  holdStepReward: 0.01
-  wrongTurnPenalty: 0.02
-  explorationLinearBonus: 0.002
-  explorationAngularPenalty: 0.001
-  approachRewardScale: 5
-  idleSpeedThreshold: 0.05
-  approachDecayRate: 4
-  wallCriticalUsThreshold: 0.15
-  frontWallThreshold: 0.3
-  closeApproachDistance: 0.3
   customMaxSteps: 3000
   o01_ultrasonic: 0
   o02_leftIR: 0
