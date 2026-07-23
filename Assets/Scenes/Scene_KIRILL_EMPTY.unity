@@ -383,7 +383,7 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
---- !u!4 &1314354404 stripped
+--- !u!4 &543168697 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2506492417572928163, guid: 9d5970e14766a2246971a969eea7b635, type: 3}
   m_PrefabInstance: {fileID: 1375624420}
@@ -476,11 +476,11 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 1051004089492166865, guid: 9110893b40b3c704e802cf7429e04db8, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 86.734
+      value: 86.729
       objectReference: {fileID: 0}
     - target: {fileID: 1051004089492166865, guid: 9110893b40b3c704e802cf7429e04db8, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: 0.002
       objectReference: {fileID: 0}
     - target: {fileID: 1051004089492166865, guid: 9110893b40b3c704e802cf7429e04db8, type: 3}
       propertyPath: m_LocalPosition.z
@@ -521,7 +521,7 @@ PrefabInstance:
     - target: {fileID: 6350445056560244966, guid: 9110893b40b3c704e802cf7429e04db8, type: 3}
       propertyPath: ball
       value: 
-      objectReference: {fileID: 1314354404}
+      objectReference: {fileID: 543168697}
     - target: {fileID: 6350445056560244966, guid: 9110893b40b3c704e802cf7429e04db8, type: 3}
       propertyPath: finishArea
       value: 
@@ -534,14 +534,6 @@ PrefabInstance:
       propertyPath: obstacleRandomizer
       value: 
       objectReference: {fileID: 1682234726}
-    - target: {fileID: 7630069793093056513, guid: 9110893b40b3c704e802cf7429e04db8, type: 3}
-      propertyPath: ball
-      value: 
-      objectReference: {fileID: 1314354404}
-    - target: {fileID: 9050675598743419137, guid: 9110893b40b3c704e802cf7429e04db8, type: 3}
-      propertyPath: targetBall
-      value: 
-      objectReference: {fileID: 1314354404}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

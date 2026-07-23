@@ -451,7 +451,7 @@ public class RobotBrain : Agent
         // 1 (far) placeholder, but the slot itself is always fed - Space Size stays 12
         // either way.
         Obs12_GroundTruthBallDistance = gtBallDistanceObsEnabled ? Mathf.Clamp01(gtRawNorm) : 1f;
-
+        Obs12_GroundTruthBallDistance = 0f;
         // 13. Ground truth (odometry) ball angle - signed angle between the ROBOT BODY's
         // own forward direction and the direction to the ball, NOT the camera/servo (that's
         // Obs05_BallAngle) and NOT gated by visibility. 0 = robot is facing the ball dead-on,
@@ -460,7 +460,7 @@ public class RobotBrain : Agent
         {
             Vector3 toBall = ball.position - transform.position; toBall.y = 0f;
             float signedAngleDeg = Vector3.SignedAngle(transform.forward, toBall, Vector3.up);
-            Obs13_GroundTruthBallAngle = Mathf.Clamp(signedAngleDeg / 180f, -1f, 1f);
+            Obs13_GroundTruthBallAngle = Mathf.Clamp(signedAngleDeg / 180f, -1f, 1f) * 0f;
         }
         else
         {
