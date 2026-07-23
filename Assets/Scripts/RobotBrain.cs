@@ -84,6 +84,8 @@ public class RobotBrain : Agent
     [SerializeField] private float gtBallRetreatPenalty = 0.001f;
     [Tooltip("Scale for centeringRewardScale * (1-|ServoAngle|) * (1-|BallAngle|), only while the ball is visible")]
     [SerializeField] private float centeringRewardScale = 0.001f;
+    [Tooltip("Small shaping penalty for accumulating heading drift away from the spawn forward direction, to discourage spinning in place")]
+    [SerializeField] private float headingDriftPenalty = 0.001f;
     [Tooltip("Flat penalty per step for driving backwards while the ball IS visible")]
     [SerializeField] private float backwardVisiblePenalty = 0.001f;
     [Tooltip("Flat penalty per step for driving backwards while the ball is NOT visible")]
@@ -121,6 +123,7 @@ public class RobotBrain : Agent
     [SerializeField] private float dbg_BallDistanceApplied;
     [SerializeField] private float dbg_GTBallApproachApplied;
     [SerializeField] private float dbg_CenteringApplied;
+    [SerializeField] private float dbg_HeadingApplied;
     [SerializeField] private float dbg_BackwardApplied;
     [SerializeField] private float dbg_SideIRCriticalApplied;
     [SerializeField] private float dbg_UltrasonicCriticalApplied;
@@ -149,6 +152,9 @@ public class RobotBrain : Agent
     private float servoAngle;
     private float lastKnownBallAngle;
     private float timeSinceBall;
+    private float headingOffset;
+    private float lastYaw;
+    private bool headingTrackingReady;
     // Last SIGNIFICANT (|value| > suddenMoveSignificance) direction seen for each channel
     // (-1, +1, or 0 = none recorded yet), and how many decisions ago that was. A reversal
     // only counts as "sudden" if the opposite significant direction reappears within
@@ -246,6 +252,9 @@ public class RobotBrain : Agent
         {
             lastKnownBallAngle = 0f;
             timeSinceBall = timeSinceBallCap;
+            headingOffset = 0f;
+            lastYaw = transform.eulerAngles.y;
+            headingTrackingReady = true;
             lastSigGas = lastSigSteer = lastSigCam = 0f;
             gasSigAge = steerSigAge = camSigAge = 999999;
             gripHoldDecisions = 0;
@@ -338,6 +347,9 @@ public class RobotBrain : Agent
         // Reset internal state
         lastKnownBallAngle = 0f;
         timeSinceBall = timeSinceBallCap;
+        headingOffset = 0f;
+        lastYaw = transform.eulerAngles.y;
+        headingTrackingReady = true;
         lastSigGas = lastSigSteer = lastSigCam = 0f;
         gasSigAge = steerSigAge = camSigAge = 999999;
         gripHoldDecisions = 0;
@@ -493,6 +505,19 @@ public class RobotBrain : Agent
                         ? cameraServo.parent.InverseTransformDirection(Vector3.up)
                         : Vector3.up);
 
+        float currentYaw = transform.eulerAngles.y;
+        if (headingTrackingReady)
+        {
+            headingOffset += Mathf.DeltaAngle(lastYaw, currentYaw);
+            headingOffset = Mathf.Clamp(headingOffset, -180f, 180f);
+        }
+        else
+        {
+            headingTrackingReady = true;
+        }
+        lastYaw = currentYaw;
+
+
         ComputeRewards(gas, steer, camCmd);
     }
 
@@ -632,6 +657,13 @@ public class RobotBrain : Agent
             dbg_CenteringApplied = 0f;
         }
 
+        // --- Heading drift shaping: small penalty for rotating away from the spawn
+        // forward direction. This nudges the agent away from pointless spinning while
+        // it is still learning to approach the ball. ---
+        float headingPenalty = headingDriftPenalty * Mathf.Clamp01(Mathf.Abs(headingOffset) / 180f);
+        Add(-headingPenalty);
+        dbg_HeadingApplied = -headingPenalty;
+        
         // --- Critical wall proximity: flat penalties, independent of movement and of each
         // other (both triggering the same step just adds both penalties, no compounding).
         if (Obs02_LeftIR == 1 || Obs03_RightIR == 1)
