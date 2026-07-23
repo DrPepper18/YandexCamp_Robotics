@@ -362,17 +362,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 208988898913a3c4c86ea40ac6ced515, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SimulatedYoloCamera
-  cam: {fileID: 7407195050640094261}
-  targetBall: {fileID: 0}
-  robotRoot: {fileID: 7938677885833167045}
-  ballTag: TargetBall
-  hFOV: 40
-  maxDistance: 2
-  drawGizmos: 1
-  verboseLogging: 0
-  dbg_distanceToBall: 0
-  dbg_angleToBall: 0
-  dbg_lastReason: '-'
+  targetTag: TargetBall
+  targetDiameterMeters: 0.06
+  manualTarget: {fileID: 0}
+  hFov: 40
+  maxViewDistance: 2
+  obstacleMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  centerBiasWeight: 0.15
 --- !u!1 &2029421990482024266
 GameObject:
   m_ObjectHideFlags: 0
@@ -417,9 +415,6 @@ GameObject:
   - component: {fileID: 8099579368565758372}
   - component: {fileID: 5391371520141763513}
   - component: {fileID: 3486562148315858876}
-  - component: {fileID: 2537734585754527380}
-  - component: {fileID: 937358267300488650}
-  - component: {fileID: 1450944633048595749}
   m_Layer: 0
   m_Name: robot
   m_TagString: Untagged
@@ -543,119 +538,6 @@ MonoBehaviour:
     m_Bits: 4294967295
   ballTag: TargetBall
   drawGizmos: 1
---- !u!114 &2537734585754527380
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2172756444253582897}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5d1c4e0b1822b495aa52bc52839ecb30, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Policies.BehaviorParameters
-  m_BrainParameters:
-    VectorObservationSize: 15
-    NumStackedVectorObservations: 4
-    m_ActionSpec:
-      m_NumContinuousActions: 3
-      BranchSizes: 
-    VectorActionSize: 03000000
-    VectorActionDescriptions: []
-    VectorActionSpaceType: 1
-    hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 0}
-  m_InferenceDevice: 0
-  m_BehaviorType: 0
-  m_BehaviorName: GFSX_Brain
-  TeamId: 0
-  m_UseChildSensors: 1
-  m_UseChildActuators: 1
-  m_DeterministicInference: 0
-  m_ObservableAttributeHandling: 0
---- !u!114 &937358267300488650
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2172756444253582897}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bf04ce443d5a0f04a8877ef7b285286e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RobotBrain
-  agentParameters:
-    maxStep: 0
-  hasUpgradedFromAgentParameters: 1
-  MaxStep: 0
-  track: {fileID: 5391371520141763513}
-  sensors: {fileID: 3486562148315858876}
-  yolo: {fileID: 1447810383005155877}
-  realVision: {fileID: 0}
-  randomizer: {fileID: 0}
-  obstacleRandomizer: {fileID: 0}
-  cameraServo: {fileID: 5075197840858462221}
-  maxServoAngle: 90
-  servoSpeed: 90
-  ball: {fileID: 0}
-  ballTag: TargetBall
-  arenaCenter: {fileID: 0}
-  arenaHalf: 2
-  ballMinForward: 2
-  ballMaxForward: 3.2
-  ballHalfWidth: 1.5
-  robotSpawnJitter: 0.5
-  fallDrop: 0.5
-  spawnPoint: {fileID: 0}
-  maxEpisodeSteps: 4000
-  missionMode: 0
-  standingStillPenalty: 0.001
-  towardBallReward: 0.003
-  centeringRewardScale: 0.001
-  backwardVisiblePenalty: 0.001
-  backwardBlindPenalty: 0.0001
-  suddenMovePenalty: 0.001
-  suddenMoveSignificance: 0.2
-  oscillationWindowDecisions: 12
-  sideIRCriticalPenalty: 50
-  ultrasonicCriticalPenalty: 50
-  ultrasonicCriticalThreshold: 0.2
-  fallPenalty: 3
-  gripRewardIntervalDecisions: 5
-  gripHoldMaxDecisions: 20
-  gripHoldTickBonus: 50
-  gripLostPenalty: 50
-  dbg_StandingStillApplied: 0
-  dbg_TowardBallApplied: 0
-  dbg_CenteringApplied: 0
-  dbg_BackwardApplied: 0
-  dbg_SideIRCriticalApplied: 0
-  dbg_UltrasonicCriticalApplied: 0
-  dbg_SuddenMoveApplied: 0
-  dbg_GripHoldBonusApplied: 0
-  dbg_GripLostApplied: 0
-  dbg_FallPenaltyApplied: 0
-  timeSinceBallCap: 10
---- !u!114 &1450944633048595749
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2172756444253582897}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ee5edf1f8c734e14785971917b22253a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::BrainDebugHUD
-  brain: {fileID: 937358267300488650}
-  fontSize: 14
-  position: {x: 20, y: 20}
-  panelWidth: 320
-  textColor: {r: 1, g: 1, b: 1, a: 1}
-  bgColor: {r: 0, g: 0, b: 0, a: 0.7}
 --- !u!1 &2560282013452808688
 GameObject:
   m_ObjectHideFlags: 0

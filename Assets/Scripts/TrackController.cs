@@ -141,6 +141,21 @@ public class TrackController : MonoBehaviour
         steer = Mathf.Clamp(steerCmd, -1f, 1f);
     }
 
+    /// <summary>
+    /// Мгновенно обнуляет gas, steer и внутреннее состояние PWM-разгона (currentLeftPwm/
+    /// currentRightPwm), в обход плавного Mathf.MoveTowards(..., maxPwmStep). Обычный
+    /// SetCommand(0, 0) всё ещё "доезжает" несколько тиков по инерции разгона — этого
+    /// достаточно, чтобы физически толкнуть мяч в момент захвата клешнёй. Используй это
+    /// в момент срабатывания ближнего ИК-датчика клешни, а не постепенное торможение.
+    /// </summary>
+    public void HardStop()
+    {
+        gas = 0f;
+        steer = 0f;
+        currentLeftPwm = 0f;
+        currentRightPwm = 0f;
+    }
+
     /// <summary>External setter for Domain Randomization (Practice 5).</summary>
     public void SetMotorParams(float newMoveSpeed, float newTurnSpeed)
     {
