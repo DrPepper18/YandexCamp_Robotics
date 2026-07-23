@@ -6,11 +6,10 @@ using Unity.MLAgents.Sensors;
 /// <summary>
 /// Interceptor GFS-X AI agent. Glues the team scripts (TrackController,
 /// VirtualSensors, SimulatedYoloCamera) into one "brain":
-///   - collects 13 observations (order strictly matches the Practice 3 table,
-///     minus odometry/heading/speed - the real GFS-X has none of those sensors -
-///     plus a 12th, toggleable, ground-truth ball distance (see
-///     gtBallDistanceObsEnabled) and a 13th, ground-truth ball angle - neither has
-///     a real-hardware equivalent, both are sim-only meta information),
+///   - collects 11 observations (order strictly matches the Practice 3 table,
+///     minus odometry/heading/speed - the real GFS-X has none of those sensors.
+///     Ground-truth ball distance/angle are computed internally for the meta-reward
+///     shaping terms below, but are NOT fed as observations),
 ///   - dispatches 3 continuous actions (no discrete action - the claw is autonomous,
 ///     driven directly by the GripperIR sensor, matching real hardware exactly),
 ///   - computes bounded rewards (all fixed amounts, no multipliers/percentages),
@@ -19,7 +18,7 @@ using Unity.MLAgents.Sensors;
 ///
 /// Behavior Parameters on the robot MUST match:
 ///   Behavior Name = GFSX_Brain (same as config.yaml)
-///   Vector Observation -> Space Size = 13, Stacked Vectors = 4
+///   Vector Observation -> Space Size = 11, Stacked Vectors = 4
 ///   Continuous Actions = 3, Discrete Branches = 0
 /// Leave the inspector "Max Step" = 0; this script caps the episode itself.
 /// </summary>
@@ -92,9 +91,9 @@ public class RobotBrain : Agent
     [SerializeField] private float gtBallApproachReward = 0.001f;
     [Tooltip("Meta-reward, ground truth: flat penalty applied instead of gtBallApproachReward when the robot's true distance to the ball increased since the last decision (moving away). Independently tunable from gtBallApproachReward - not just its negative")]
     [SerializeField] private float gtBallRetreatPenalty = 0.001f;
-    [Tooltip("Normalization range (meters) for the gtBallApproachReward/gtBallRetreatPenalty progress term AND for the 12th observation (Obs12_GroundTruthBallDistance, see gtBallDistanceObsEnabled)")]
+    [Tooltip("Normalization range (meters) for the gtBallApproachReward/gtBallRetreatPenalty progress term - ground truth, computed internally, NOT fed as an observation")]
     [SerializeField] private float groundTruthBallDistanceMaxRange = 5f;
-    [Tooltip("Meta-reward, ground truth: rewards the ROBOT BODY facing the ball directly (Obs13_GroundTruthBallAngle, 0 = facing it dead-on), regardless of camera/servo alignment or visibility. Same formula shape as centeringRewardScale above: gtCenteringReward * (1-|angle|)^3, always active - NOT gated by ballVisible")]
+    [Tooltip("Meta-reward, ground truth: rewards the ROBOT BODY facing the ball directly (0 = facing it dead-on), regardless of camera/servo alignment or visibility - computed internally, NOT fed as an observation. Same formula shape as centeringRewardScale above: gtCenteringReward * (1-|angle|)^3, always active - NOT gated by ballVisible")]
     [SerializeField] private float gtCenteringReward = 0.001f;
     [Tooltip("Scale for centeringRewardScale * (1-|ServoAngle|) * (1-|BallAngle|), only while the ball is visible")]
     [SerializeField] private float centeringRewardScale = 0.001f;
@@ -148,8 +147,6 @@ public class RobotBrain : Agent
 
     [Header("Observation normalization")]
     [SerializeField] private float timeSinceBallCap = 10f;  // s
-    [Tooltip("12th observation: ground truth (ODOMETRY - no real-hardware equivalent) distance to the ball, Clamp01(distance/groundTruthBallDistanceMaxRange). NOT gated by camera visibility, unlike Obs06_BallDistance. Toggle off to fall back to a neutral 1 (far) placeholder - the observation slot always exists (Space Size stays 12) either way, only its content changes")]
-    [SerializeField] private bool gtBallDistanceObsEnabled = true;
 
     // ---- Rigidbody / start poses ----
     private Rigidbody rb;
@@ -190,6 +187,11 @@ public class RobotBrain : Agent
     private float prevGtBallDistRaw = -1f;
     private float pendingGtBallReward;
 
+    // GT ball angle (normalized -1..1, 0 = robot body facing the ball dead-on), computed
+    // fresh each decision in CollectObservations, purely for the gtCenteringReward
+    // meta-reward below - NOT fed as an observation.
+    private float gtBallAngleNorm;
+
     /// <summary>True when connected to the Python trainer (used later for domain randomization / ROSBridge gating).</summary>
     public bool IsTraining => Academy.Instance.IsCommunicatorOn;
 
@@ -205,8 +207,6 @@ public class RobotBrain : Agent
     public float Obs09_ServoAngleNorm    { get; private set; }
     public float Obs10_HasBall           { get; private set; }
     public float Obs11_TimeSinceBallNorm { get; private set; }
-    public float Obs12_GroundTruthBallDistance { get; private set; }
-    public float Obs13_GroundTruthBallAngle { get; private set; }
 
     public float ActGas       { get; private set; }
     public float ActSteer     { get; private set; }
@@ -446,25 +446,20 @@ public class RobotBrain : Agent
         }
         prevGtBallDistRaw = gtRawNorm;
 
-        // 12. Ground truth (odometry) ball distance - NOT gated by camera visibility,
-        // unlike Obs06_BallDistance. Toggleable: when disabled, falls back to a neutral
-        // 1 (far) placeholder, but the slot itself is always fed - Space Size stays 12
-        // either way.
-        Obs12_GroundTruthBallDistance = gtBallDistanceObsEnabled ? Mathf.Clamp01(gtRawNorm) : 1f;
-        Obs12_GroundTruthBallDistance = 0f;
-        // 13. Ground truth (odometry) ball angle - signed angle between the ROBOT BODY's
-        // own forward direction and the direction to the ball, NOT the camera/servo (that's
-        // Obs05_BallAngle) and NOT gated by visibility. 0 = robot is facing the ball dead-on,
-        // +-1 = ball is directly behind. Normalized by 180 deg (the only possible max).
+        // Ground truth ball angle - signed angle between the ROBOT BODY's own forward
+        // direction and the direction to the ball, NOT the camera/servo (that's
+        // Obs05_BallAngle) and NOT gated by visibility. 0 = robot is facing the ball
+        // dead-on, +-1 = ball is directly behind. Normalized by 180 deg (the only possible
+        // max). Purely internal - feeds gtCenteringReward below, not an observation.
         if (ball != null)
         {
             Vector3 toBall = ball.position - transform.position; toBall.y = 0f;
             float signedAngleDeg = Vector3.SignedAngle(transform.forward, toBall, Vector3.up);
-            Obs13_GroundTruthBallAngle = Mathf.Clamp(signedAngleDeg / 180f, -1f, 1f) * 0f;
+            gtBallAngleNorm = Mathf.Clamp(signedAngleDeg / 180f, -1f, 1f);
         }
         else
         {
-            Obs13_GroundTruthBallAngle = 0f;
+            gtBallAngleNorm = 0f;
         }
 
         // --- Feed strictly in the Practice 3 table order ---
@@ -479,8 +474,6 @@ public class RobotBrain : Agent
         sensor.AddObservation(Obs09_ServoAngleNorm);
         sensor.AddObservation(Obs10_HasBall);
         sensor.AddObservation(Obs11_TimeSinceBallNorm);
-        sensor.AddObservation(Obs12_GroundTruthBallDistance);
-        sensor.AddObservation(Obs13_GroundTruthBallAngle);
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -673,11 +666,11 @@ public class RobotBrain : Agent
         }
 
         // --- Ground truth (meta) centering: SAME formula shape as the visible-ball
-        // centering reward above, just on Obs13_GroundTruthBallAngle (robot BODY facing
-        // the ball) instead of the camera-perceived Obs05_BallAngle - and always active,
-        // NOT gated by ballVisible, since it's ground truth.
+        // centering reward above, just on gtBallAngleNorm (robot BODY facing the ball)
+        // instead of the camera-perceived Obs05_BallAngle - and always active, NOT gated
+        // by ballVisible, since it's ground truth.
         {
-            float c = Mathf.Abs(Obs13_GroundTruthBallAngle);
+            float c = Mathf.Abs(gtBallAngleNorm);
             float gtCentering = gtCenteringReward * (1f - c) * (1f - c) * (1f - c);
             Add(gtCentering);
             dbg_GTCenteringApplied = gtCentering;

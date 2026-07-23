@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Отладочный HUD для RobotBrain: показывает все 13 наблюдений, текущие действия
+/// Отладочный HUD для RobotBrain: показывает все 11 наблюдений, текущие действия
 /// и награду прямо поверх Game view. Полезно для проверки Heuristic-режима с WASD.
 /// Вешай на любой объект в сцене (или на робота). Перетащи в поле Brain
 /// ссылку на компонент RobotBrain.
@@ -42,7 +42,7 @@ public class BrainDebugHUD : MonoBehaviour
 
         // ---- Собираем текст ----
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("<b>OBSERVATIONS (13)</b>");
+        sb.AppendLine("<b>OBSERVATIONS (11)</b>");
         sb.AppendLine(Row(" 1 Ultrasonic     ", Fmt(brain.Obs01_Ultrasonic),        ColorByRange(brain.Obs01_Ultrasonic, low:true)));
         sb.AppendLine(Row(" 2 LeftIR         ", brain.Obs02_LeftIR.ToString(),      Bit(brain.Obs02_LeftIR)));
         sb.AppendLine(Row(" 3 RightIR        ", brain.Obs03_RightIR.ToString(),     Bit(brain.Obs03_RightIR)));
@@ -54,8 +54,6 @@ public class BrainDebugHUD : MonoBehaviour
         sb.AppendLine(Row(" 9 ServoAngle     ", Fmt(brain.Obs09_ServoAngleNorm),    "white"));
         sb.AppendLine(Row("10 HasBall        ", Fmt0(brain.Obs10_HasBall),          brain.Obs10_HasBall > 0.5f ? "lime" : "gray"));
         sb.AppendLine(Row("11 TimeSinceBall  ", Fmt(brain.Obs11_TimeSinceBallNorm), "white"));
-        sb.AppendLine(Row("12 GT BallDist    ", Fmt(brain.Obs12_GroundTruthBallDistance), "white"));
-        sb.AppendLine(Row("13 GT BallAngle   ", Fmt(brain.Obs13_GroundTruthBallAngle), "white"));
 
         sb.AppendLine();
         sb.AppendLine("<b>ACTIONS</b>");

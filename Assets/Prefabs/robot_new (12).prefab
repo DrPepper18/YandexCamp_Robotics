@@ -1290,7 +1290,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Policies.BehaviorParameters
   m_BrainParameters:
-    VectorObservationSize: 13
+    VectorObservationSize: 11
     NumStackedVectorObservations: 4
     m_ActionSpec:
       m_NumContinuousActions: 3
@@ -1299,7 +1299,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 1
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 0}
+  m_Model: {fileID: 5022602860645237092, guid: 18dcfb5b7f1668846adc74acc403f07e, type: 3}
   m_InferenceDevice: 0
   m_BehaviorType: 0
   m_BehaviorName: GFSX_Brain
@@ -1386,7 +1386,6 @@ MonoBehaviour:
   dbg_TimeoutPenaltyApplied: 0
   dbg_BallBumperApplied: 0
   timeSinceBallCap: 10
-  gtBallDistanceObsEnabled: 1
 --- !u!114 &6536386532545001608
 MonoBehaviour:
   m_ObjectHideFlags: 0
