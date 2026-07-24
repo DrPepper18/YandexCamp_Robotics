@@ -1,38 +1,42 @@
 using UnityEngine;
 
 /// <summary>
-/// Отладочный HUD для RobotBrain: показывает все 14 наблюдений, текущие действия
-/// и награду прямо поверх Game view. Полезно для проверки Heuristic-режима с WASD.
-/// Вешай на любой объект в сцене (или на робота). Перетащи в поле Brain
-/// ссылку на компонент RobotBrain.
+/// Отладочный HUD для VisualServoBrain и SimulatedYoloCamera.
+/// Выводит текущий State робота, параметры YOLO Bounding Box,
+/// состояние датчиков и глубину LIFO-стека истории движения.
 /// </summary>
 public class BrainDebugHUD : MonoBehaviour
 {
-    [SerializeField] private RobotBrain brain;
+    [Header("Ссылки на компоненты")]
+    [SerializeField] private VisualServoBrain brain;
+    [SerializeField] private SimulatedYoloCamera yoloCamera;
+    [SerializeField] private VirtualSensors sensors;
+    [SerializeField] private GripperController gripper;
 
     [Header("Внешний вид")]
     [SerializeField] private int fontSize = 14;
     [SerializeField] private Vector2 position = new Vector2(20, 20);
-    [SerializeField] private float panelWidth = 320f;
+    [SerializeField] private float panelWidth = 340f;
     [SerializeField] private Color textColor = Color.white;
-    [SerializeField] private Color bgColor = new Color(0f, 0f, 0f, 0.7f);
+    [SerializeField] private Color bgColor = new Color(0f, 0f, 0f, 0.75f);
 
     private GUIStyle style;
     private Texture2D bgTexture;
 
     private void OnGUI()
     {
-        if (brain == null) return;
-
+        // Гарантируем правильную настройку стиля с поддержкой RichText
         if (style == null)
         {
             style = new GUIStyle(GUI.skin.label)
             {
                 fontSize = fontSize,
-                normal = { textColor = textColor },
-                richText = true
+                richText = true, // ОБЯЗАТЕЛЬНО
+                alignment = TextAnchor.UpperLeft
             };
+            style.normal.textColor = textColor;
         }
+
         if (bgTexture == null)
         {
             bgTexture = new Texture2D(1, 1);
@@ -40,46 +44,53 @@ public class BrainDebugHUD : MonoBehaviour
             bgTexture.Apply();
         }
 
-        // ---- Собираем текст ----
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("<b>OBSERVATIONS (14)</b>");
-        sb.AppendLine(Row(" 1 Ultrasonic     ", Fmt(brain.Obs01_Ultrasonic),        ColorByRange(brain.Obs01_Ultrasonic, low:true)));
-        sb.AppendLine(Row(" 2 LeftIR         ", brain.Obs02_LeftIR.ToString(),      Bit(brain.Obs02_LeftIR)));
-        sb.AppendLine(Row(" 3 RightIR        ", brain.Obs03_RightIR.ToString(),     Bit(brain.Obs03_RightIR)));
-        sb.AppendLine(Row(" 4 GripperIR      ", brain.Obs04_GripperIR.ToString(),   Bit(brain.Obs04_GripperIR)));
-        sb.AppendLine(Row(" 5 BallAngle      ", Fmt(brain.Obs05_BallAngle),         brain.Obs08_BallVisible > 0.5f ? "lime" : "gray"));
-        sb.AppendLine(Row(" 6 BallDistance   ", Fmt(brain.Obs06_BallDistance),      brain.Obs08_BallVisible > 0.5f ? "lime" : "gray"));
-        sb.AppendLine(Row(" 7 LastKnownAngle ", Fmt(brain.Obs07_LastKnownAngle),    "white"));
-        sb.AppendLine(Row(" 8 BallVisible    ", Fmt0(brain.Obs08_BallVisible),      brain.Obs08_BallVisible > 0.5f ? "lime" : "red"));
-        sb.AppendLine(Row(" 9 ServoAngle     ", Fmt(brain.Obs09_ServoAngleNorm),    "white"));
-        sb.AppendLine(Row("10 HasBall        ", Fmt0(brain.Obs10_HasBall),          brain.Obs10_HasBall > 0.5f ? "lime" : "gray"));
-        sb.AppendLine(Row("11 TimeSinceBall  ", Fmt(brain.Obs11_TimeSinceBallNorm), "white"));
-        sb.AppendLine(Row("12 DisplacementX  ", FmtSigned(brain.Obs12_DisplacementX), "white"));
-        sb.AppendLine(Row("13 DisplacementZ  ", FmtSigned(brain.Obs13_DisplacementZ), "white"));
-        sb.AppendLine(Row("14 GT BallDist    ", Fmt(brain.Obs14_GroundTruthBallDistance), "white"));
+
+        // 1. STATES
+        string stateStr = brain != null ? brain.CurrentState.ToString() : "N/A";
+        string stateColor = brain != null ? GetStateColor(brain.CurrentState) : "red";
+        
+        sb.AppendLine("<b>SYSTEM STATES</b>");
+        sb.AppendLine(Row("Robot State", stateStr, stateColor));
+
+        bool isVisible = yoloCamera != null && yoloCamera.IsVisible;
+        sb.AppendLine(Row("Ball Visible", isVisible ? "YES" : "NO", isVisible ? "lime" : "red"));
+
+        // Проверяем и ИК-датчик, и сам контроллер клешни
+        bool hasBall = (sensors != null && sensors.GripperIR == 1) || (gripper != null && gripper.IsHolding);
+        sb.AppendLine(Row("Gripper IR", hasBall ? "BALL GRABBED" : "EMPTY", hasBall ? "lime" : "gray"));
 
         sb.AppendLine();
-        sb.AppendLine("<b>ACTIONS</b>");
-        sb.AppendLine(Row("Gas    (W/S)     ", FmtSigned(brain.ActGas),       "cyan"));
-        sb.AppendLine(Row("Steer  (A/D)     ", FmtSigned(brain.ActSteer),     "cyan"));
-        sb.AppendLine(Row("Camera (Q/E)     ", FmtSigned(brain.ActCameraCmd), "cyan"));
+
+        // 2. YOLO
+        sb.AppendLine("<b>YOLO METRICS</b>");
+        float bboxSize = yoloCamera != null ? yoloCamera.BboxSize : 0f;
+        float relAngle = yoloCamera != null ? yoloCamera.RelativeAngle : 0f;
+        sb.AppendLine(Row("BBox Size", Fmt(bboxSize), isVisible ? "cyan" : "gray"));
+        sb.AppendLine(Row("Relative Angle", FmtSigned(relAngle), isVisible ? "cyan" : "gray"));
 
         sb.AppendLine();
-        sb.AppendLine("<b>REWARD</b>");
-        sb.AppendLine(Row("Step             ", FmtSigned(brain.StepReward),
-            brain.StepReward > 0 ? "lime" : (brain.StepReward < 0 ? "red" : "white")));
-        sb.AppendLine(Row("Episode total    ", FmtSigned(brain.CumulativeReward),
-            brain.CumulativeReward > 0 ? "lime" : (brain.CumulativeReward < 0 ? "red" : "white")));
+
+        // 3. CONTROL
+        sb.AppendLine("<b>CONTROL & HISTORY</b>");
+        int historyCount = brain != null ? brain.ActionHistory.Count : 0;
+        
+        // Берем актуальные значения прямо из камеры / брейна
+        float gas = brain != null ? brain.dbg_gas : 0f;
+        float steer = brain != null ? brain.dbg_steer : 0f;
+
+        sb.AppendLine(Row("Gas Cmd", FmtSigned(gas), "yellow"));
+        sb.AppendLine(Row("Steer Cmd", FmtSigned(steer), "yellow"));
+        sb.AppendLine(Row("Action History", $"{historyCount} frames", historyCount > 0 ? "white" : "gray"));
 
         string text = sb.ToString();
 
-        // ---- Отрисовка ----
-        int lineCount = text.Split('\n').Length;
-        float height = lineCount * (fontSize + 4) + 15;
-
+        // Отрисовка
+        float height = 240f; // Фиксированная высота, чтобы ничего не прыгало
         Rect box = new Rect(position.x, position.y, panelWidth, height);
+        
         GUI.DrawTexture(box, bgTexture);
-        GUI.Label(new Rect(box.x + 10, box.y + 5, box.width - 20, box.height - 10), text, style);
+        GUI.Label(new Rect(box.x + 10, box.y + 10, box.width - 20, box.height - 20), text, style);
     }
 
     // ---- Хелперы форматирования ----
@@ -88,20 +99,19 @@ public class BrainDebugHUD : MonoBehaviour
         return $"{label} <color={color}>{value}</color>";
     }
 
-    private static string Fmt(float v)       => v.ToString("F3");
+    private static string Fmt(float v) => v.ToString("F3");
     private static string FmtSigned(float v) => v.ToString("+0.000;-0.000; 0.000");
-    private static string Fmt0(float v)      => v.ToString("F0");
-    private static string Bit(int v)         => v == 1 ? "red" : "lime";
 
-    private static string ColorByRange(float v, bool low)
+    private static string GetStateColor(VisualServoBrain.State state)
     {
-        // low=true: маленькое значение — плохо (красный), большое — хорошо (зелёный)
-        if (low)
+        switch (state)
         {
-            if (v < 0.3f) return "red";
-            if (v < 0.6f) return "yellow";
-            return "lime";
+            case VisualServoBrain.State.Searching: return "yellow";
+            case VisualServoBrain.State.Approaching: return "cyan";
+            case VisualServoBrain.State.Grabbing: return "orange";
+            case VisualServoBrain.State.Returning: return "magenta";
+            case VisualServoBrain.State.Done: return "lime";
+            default: return "white";
         }
-        return "white";
     }
 }
